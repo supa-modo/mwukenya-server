@@ -3,6 +3,7 @@ import { User } from "../models";
 import { UserRole, MembershipStatus, Gender } from "../models/types";
 import sequelize from "../config/database";
 import bcrypt from "bcrypt";
+import { config } from "../config";
 
 export async function seedUsers(transaction?: Transaction) {
   const t = transaction || (await sequelize.transaction());
@@ -17,9 +18,12 @@ export async function seedUsers(transaction?: Transaction) {
 
     console.log("🌱 Seeding users...");
 
-    // Hash password for all users
+    // Hash password for all users using the same rounds as the User model
     const defaultPassword = "Password123!";
-    const hashedPassword = await bcrypt.hash(defaultPassword, 10);
+    const hashedPassword = await bcrypt.hash(
+      defaultPassword,
+      config.security.bcryptRounds
+    );
 
     // 1. Create Super Admin
     const superAdmin = await User.create(

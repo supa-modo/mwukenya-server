@@ -68,15 +68,27 @@ router.post(
 );
 
 /**
- * @route   POST /api/v1/auth/reset-password
- * @desc    Reset password with code
+ * @route   POST /api/v1/auth/reset-password/:token
+ * @desc    Reset password with token (from email)
  * @access  Public
  * @rate    5 requests per minute
  */
 router.post(
-  "/reset-password",
+  "/reset-password/:token",
   rateLimitMiddleware("reset-password", 5, 60), // 5 requests per minute
-  AuthController.resetPassword
+  AuthController.resetPasswordWithToken
+);
+
+/**
+ * @route   POST /api/v1/auth/reset-password-code
+ * @desc    Reset password with SMS code
+ * @access  Public
+ * @rate    5 requests per minute
+ */
+router.post(
+  "/reset-password-code",
+  rateLimitMiddleware("reset-password-code", 5, 60), // 5 requests per minute
+  AuthController.resetPasswordWithCode
 );
 
 export default router;

@@ -11,6 +11,8 @@ import {
 } from "../types";
 import logger, { auditLogger, securityLogger } from "../utils/logger";
 import crypto from "crypto";
+import { emailService } from "../utils/emailService";
+import { smsService } from "../utils/smsService";
 
 export interface AuthTokens {
   accessToken: string;
@@ -54,7 +56,11 @@ export class AuthService {
       const loginIdentifier = phoneNumber || identifier;
 
       if (!loginIdentifier) {
-        throw new ApiError("Phone number or ID number is required", "AUTH_001", 400);
+        throw new ApiError(
+          "Phone number or ID number is required",
+          "AUTH_001",
+          400
+        );
       }
 
       // Check for rate limiting
@@ -72,7 +78,7 @@ export class AuthService {
 
       // Find user by phone number or ID number
       let user = null;
-      
+
       if (phoneNumber) {
         // Try to find by phone number first
         user = await User.findOne({
@@ -113,7 +119,11 @@ export class AuthService {
 
       if (!user) {
         await this.recordFailedLogin(loginIdentifier, ipAddress, userAgent);
-        throw new ApiError("Invalid phone number/ID number or password", "AUTH_001", 401);
+        throw new ApiError(
+          "Invalid Phone/ID number or Password",
+          "AUTH_001",
+          401
+        );
       }
 
       // Check if user is active
@@ -132,7 +142,11 @@ export class AuthService {
 
       if (!isValidPassword) {
         await this.recordFailedLogin(loginIdentifier, ipAddress, userAgent);
-        throw new ApiError("Invalid phone number/ID number or password", "AUTH_001", 401);
+        throw new ApiError(
+          "Invalid Phone/ID number or Password",
+          "AUTH_001",
+          401
+        );
       }
 
       // Clear failed login attempts
@@ -448,48 +462,119 @@ export class AuthService {
   }
 
   /**
-   * Request password reset
+   * Request password reset - supports both email and phone
    */
   public static async requestPasswordReset(
-    phoneNumber: string
-  ): Promise<ServiceResponse<{ message: string }>> {
+    identifier: string
+  ): Promise<ServiceResponse<{ message: string; method: "email" | "sms" }>> {
     try {
-      const user = await User.findByPhone(phoneNumber);
+      const isEmail = identifier.includes("@");
+      let user: any = null;
+
+      if (isEmail) {
+        user = await User.findOne({ where: { email: identifier } });
+      } else {
+        const formattedPhone = smsService.formatPhoneNumber(identifier);
+        user = await User.findByPhone(formattedPhone);
+      }
 
       if (!user) {
         // Don't reveal whether user exists for security
         return {
           success: true,
           data: {
-            message:
-              "If the phone number exists, a password reset code has been sent",
+            message: isEmail
+              ? "If the email exists, a password reset link has been sent"
+              : "If the phone number exists, a password reset code has been sent",
+            method: isEmail ? "email" : "sms",
           },
         };
       }
 
-      // Generate reset token
+      // Generate reset token (storing raw token for simplicity)
       const resetToken = crypto.randomBytes(32).toString("hex");
-      const resetExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+      const resetExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+      // Debug logging for token generation
+      if (process.env.NODE_ENV === "development") {
+        logger.info("🔐 TOKEN GENERATION DEBUG");
+        logger.info(`Generated raw token: ${resetToken}`);
+        logger.info(`Token expires at: ${resetExpires}`);
+      }
 
       await user.update({
         passwordResetToken: resetToken,
         passwordResetExpires: resetExpires,
       });
 
-      // Store reset code in Redis for quick lookup
-      const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
-      await redisUtils.setex(`reset_code:${phoneNumber}`, resetCode, 900); // 15 minutes
-      await redisUtils.setex(`reset_token:${resetToken}`, user.id, 900);
+      let messageSent = false;
+      let method: "email" | "sms" = isEmail ? "email" : "sms";
 
-      // TODO: Send SMS with reset code
-      logger.info(`Password reset code for ${phoneNumber}: ${resetCode}`);
+      if (isEmail && user.email) {
+        // Send email with reset link
+        messageSent = await emailService.sendPasswordResetEmail(
+          user.email,
+          resetToken,
+          user.firstName
+        );
+      } else {
+        // Send SMS with reset code
+        const resetCode = Math.floor(
+          100000 + Math.random() * 900000
+        ).toString();
+        await redisUtils.setex(
+          `reset_code:${user.phoneNumber}`,
+          resetCode,
+          600
+        ); // 10 minutes
+        await redisUtils.setex(`reset_token:${resetToken}`, user.id, 600);
 
-      auditLogger("PASSWORD_RESET_REQUEST", user.id, { phoneNumber });
+        messageSent = await smsService.sendPasswordResetSMS(
+          user.phoneNumber,
+          resetCode,
+          user.firstName
+        );
+
+        // For development, log the reset code
+        if (process.env.NODE_ENV === "development") {
+          logger.info(
+            `Password reset code for ${user.phoneNumber}: ${resetCode}`
+          );
+        }
+      }
+
+      auditLogger("PASSWORD_RESET_REQUEST", user.id, {
+        identifier: isEmail ? user.email : user.phoneNumber,
+        method,
+      });
+
+      // Log password reset request details in development
+      if (process.env.NODE_ENV === "development") {
+        logger.info("🔐 PASSWORD RESET REQUEST PROCESSED");
+        logger.info(
+          `User: ${user.firstName} ${user.lastName} (ID: ${user.id})`
+        );
+        logger.info(`Method: ${method.toUpperCase()}`);
+        logger.info(`Identifier: ${isEmail ? user.email : user.phoneNumber}`);
+        logger.info(`Message Sent: ${messageSent ? "✅ Yes" : "❌ No"}`);
+        if (!isEmail) {
+          logger.info(`📱 Check SMS logs above for the reset code`);
+        } else {
+          logger.info(`📧 Check email logs above for the reset link`);
+        }
+      }
 
       return {
         success: true,
         data: {
-          message: "Password reset code has been sent to your phone",
+          message: messageSent
+            ? isEmail
+              ? "Password reset link has been sent to your email"
+              : "Password reset code has been sent to your phone"
+            : isEmail
+            ? "Password reset token generated. Email delivery may be delayed."
+            : "Password reset code generated. SMS delivery may be delayed.",
+          method,
         },
       };
     } catch (error) {
@@ -506,25 +591,41 @@ export class AuthService {
   }
 
   /**
-   * Reset password
+   * Reset password with token (email) or code (SMS)
    */
-  public static async resetPassword(
-    phoneNumber: string,
-    resetCode: string,
+  public static async resetPasswordWithToken(
+    token: string,
     newPassword: string
   ): Promise<ServiceResponse<{ message: string }>> {
     try {
-      // Verify reset code
-      const storedCode = await redisUtils.get(`reset_code:${phoneNumber}`);
-
-      if (!storedCode || storedCode !== resetCode) {
-        throw new ApiError("Invalid or expired reset code", "AUTH_003", 400);
+      // Debug logging for development
+      if (process.env.NODE_ENV === "development") {
+        logger.info("🔍 TOKEN VERIFICATION DEBUG");
+        logger.info(`Raw token received: ${token}`);
       }
 
-      const user = await User.findByPhone(phoneNumber);
+      // Find user by token (using raw token)
+      const user = await User.findOne({
+        where: {
+          passwordResetToken: token,
+          passwordResetExpires: {
+            [Op.gt]: new Date(),
+          },
+        },
+      });
+
+      // More debug logging
+      if (process.env.NODE_ENV === "development") {
+        if (!user) {
+          logger.info("❌ No user found with matching token");
+          logger.info("Check if token has expired or was already used");
+        } else {
+          logger.info(`✅ User found: ${user.firstName} ${user.lastName}`);
+        }
+      }
 
       if (!user) {
-        throw new ApiError("User not found", "RES_001", 404);
+        throw new ApiError("Invalid or expired reset token", "AUTH_003", 400);
       }
 
       // Update password
@@ -537,16 +638,25 @@ export class AuthService {
         refreshToken: undefined, // Force re-login
       });
 
-      // Clear Redis keys
-      await redisUtils.del(`reset_code:${phoneNumber}`);
-      if (user.passwordResetToken) {
-        await redisUtils.del(`reset_token:${user.passwordResetToken}`);
-      }
+      // Clear Redis keys if they exist
+      await redisUtils.del(`reset_code:${user.phoneNumber}`);
+      await redisUtils.del(`reset_token:${token}`);
 
       // Invalidate all user sessions
       await JWTUtils.invalidateAllUserSessions(user.id);
 
-      auditLogger("PASSWORD_RESET", user.id, { phoneNumber });
+      auditLogger("PASSWORD_RESET", user.id, { method: "token" });
+
+      // Log password reset completion in development
+      if (process.env.NODE_ENV === "development") {
+        logger.info("✅ PASSWORD RESET COMPLETED (EMAIL TOKEN)");
+        logger.info(
+          `User: ${user.firstName} ${user.lastName} (ID: ${user.id})`
+        );
+        logger.info(`Email: ${user.email}`);
+        logger.info(`Token Used: ${token.substring(0, 8)}...`);
+        logger.info(`All user sessions have been invalidated`);
+      }
 
       return {
         success: true,
@@ -566,7 +676,96 @@ export class AuthService {
         };
       }
 
-      logger.error("Password reset error:", error);
+      logger.error("Password reset with token error:", error);
+      return {
+        success: false,
+        error: {
+          code: "SYS_005",
+          message: "Internal server error",
+          statusCode: 500,
+        },
+      };
+    }
+  }
+
+  /**
+   * Reset password with SMS code
+   */
+  public static async resetPasswordWithCode(
+    phoneNumber: string,
+    resetCode: string,
+    newPassword: string
+  ): Promise<ServiceResponse<{ message: string }>> {
+    try {
+      const formattedPhone = smsService.formatPhoneNumber(phoneNumber);
+
+      // Verify reset code
+      const storedCode = await redisUtils.get(`reset_code:${formattedPhone}`);
+
+      if (!storedCode || storedCode !== resetCode) {
+        throw new ApiError("Invalid or expired reset code", "AUTH_003", 400);
+      }
+
+      const user = await User.findByPhone(formattedPhone);
+
+      if (!user) {
+        throw new ApiError("User not found", "RES_001", 404);
+      }
+
+      // Update password
+      await user.updatePassword(newPassword);
+
+      // Clear reset tokens
+      await user.update({
+        passwordResetToken: undefined,
+        passwordResetExpires: undefined,
+        refreshToken: undefined, // Force re-login
+      });
+
+      // Clear Redis keys
+      await redisUtils.del(`reset_code:${formattedPhone}`);
+      if (user.passwordResetToken) {
+        await redisUtils.del(`reset_token:${user.passwordResetToken}`);
+      }
+
+      // Invalidate all user sessions
+      await JWTUtils.invalidateAllUserSessions(user.id);
+
+      auditLogger("PASSWORD_RESET", user.id, {
+        method: "sms",
+        phoneNumber: formattedPhone,
+      });
+
+      // Log password reset completion in development
+      if (process.env.NODE_ENV === "development") {
+        logger.info("✅ PASSWORD RESET COMPLETED (SMS CODE)");
+        logger.info(
+          `User: ${user.firstName} ${user.lastName} (ID: ${user.id})`
+        );
+        logger.info(`Phone: ${formattedPhone}`);
+        logger.info(`Code Used: ${resetCode}`);
+        logger.info(`All user sessions have been invalidated`);
+      }
+
+      return {
+        success: true,
+        data: {
+          message: "Password has been reset successfully",
+        },
+      };
+    } catch (error) {
+      if (error instanceof ApiError) {
+        return {
+          success: false,
+          error: {
+            code: error.code,
+            message: error.message,
+            statusCode: error.statusCode,
+          },
+        };
+      }
+
+      logger.error("Password reset with code error:", error);
       return {
         success: false,
         error: {

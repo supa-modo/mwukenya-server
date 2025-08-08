@@ -86,10 +86,11 @@ export const config = {
 
   // Email configuration
   email: {
-    host: process.env.SMTP_HOST || "smtp.gmail.com",
-    port: parseInt(process.env.SMTP_PORT || "587", 10),
-    user: process.env.SMTP_USER || "",
-    password: process.env.SMTP_PASSWORD || "",
+    host: process.env.EMAIL_HOST,
+    port: parseInt(process.env.EMAIL_PORT || "587", 10),
+    user: process.env.EMAIL_USER || "",
+    password: process.env.EMAIL_PASSWORD || "",
+    from: process.env.EMAIL_FROM || "noreply@mwu.co.ke",
   },
 
   // File upload configuration

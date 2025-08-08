@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { AuthService } from "../services/AuthService";
 import { ApiError } from "../utils/apiError";
-import { apiLogger } from "../utils/logger";
+import logger, { apiLogger } from "../utils/logger";
 import Joi from "joi";
 
 // Validation schemas
@@ -12,19 +12,15 @@ const loginSchema = Joi.object({
     .messages({
       "string.pattern.base": "Phone number must be in valid E.164 format",
     }),
-  identifier: Joi.string()
-    .min(6)
-    .max(20)
-    .optional()
-    .messages({
-      "string.min": "Identifier must be at least 6 characters long",
-      "string.max": "Identifier cannot exceed 20 characters",
-    }),
+  identifier: Joi.string().min(6).max(20).optional().messages({
+    "string.min": "Identifier must be at least 6 characters long",
+    "string.max": "Identifier cannot exceed 20 characters",
+  }),
   password: Joi.string().min(6).required().messages({
     "string.min": "Password must be at least 6 characters long",
     "any.required": "Password is required",
   }),
-}).or('phoneNumber', 'identifier');
+}).or("phoneNumber", "identifier");
 
 const registerSchema = Joi.object({
   firstName: Joi.string()
@@ -132,21 +128,49 @@ const refreshTokenSchema = Joi.object({
 });
 
 const forgotPasswordSchema = Joi.object({
-  phoneNumber: Joi.string()
-    .pattern(/^\+?[1-9]\d{1,14}$/)
+  identifier: Joi.string()
     .required()
+    .custom((value, helpers) => {
+      // Check if it's an email
+      if (value.includes("@")) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(value)) {
+          return helpers.error("any.invalid");
+        }
+      } else {
+        // Check if it's a phone number
+        const phoneRegex = /^\+?[0-9]{9,15}$/;
+        if (!phoneRegex.test(value)) {
+          return helpers.error("any.invalid");
+        }
+      }
+      return value;
+    })
     .messages({
-      "string.pattern.base": "Phone number must be in valid E.164 format",
-      "any.required": "Phone number is required",
+      "any.required": "Email or phone number is required",
+      "any.invalid": "Must be a valid email address or phone number",
     }),
 });
 
-const resetPasswordSchema = Joi.object({
-  phoneNumber: Joi.string()
-    .pattern(/^\+?[1-9]\d{1,14}$/)
+const resetPasswordWithTokenSchema = Joi.object({
+  password: Joi.string()
+    .min(8)
+    .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/)
     .required()
     .messages({
-      "string.pattern.base": "Phone number must be in valid E.164 format",
+      "string.min": "Password must be at least 8 characters long",
+      "string.pattern.base":
+        "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character",
+      "any.required": "Password is required",
+    }),
+});
+
+const resetPasswordWithCodeSchema = Joi.object({
+  phoneNumber: Joi.string()
+    .pattern(/^\+?[0-9]{9,15}$/)
+    .required()
+    .messages({
+      "string.pattern.base": "Phone number must be valid (9-15 digits)",
       "any.required": "Phone number is required",
     }),
   resetCode: Joi.string()
@@ -502,7 +526,15 @@ export class AuthController {
         return;
       }
 
-      const result = await AuthService.requestPasswordReset(value.phoneNumber);
+      // Log the password reset request in development
+      if (process.env.NODE_ENV === "development") {
+        const method = value.identifier.includes("@") ? "EMAIL" : "SMS";
+        logger.info("🔑 FORGOT PASSWORD REQUEST RECEIVED");
+        logger.info(`Method: ${method}`);
+        logger.info(`Identifier: ${value.identifier}`);
+      }
+
+      const result = await AuthService.requestPasswordReset(value.identifier);
 
       apiLogger("POST", "/auth/forgot-password", 200, Date.now() - startTime);
 
@@ -534,17 +566,32 @@ export class AuthController {
   }
 
   /**
-   * Reset password
+   * Reset password with token (from email)
    */
-  public static async resetPassword(
+  public static async resetPasswordWithToken(
     req: Request,
     res: Response
   ): Promise<void> {
     const startTime = Date.now();
 
     try {
+      // Get token from URL params
+      const { token } = req.params;
+
+      if (!token) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: "VAL_001",
+            message: "Reset token is required",
+          },
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
+
       // Validate request body
-      const { error, value } = resetPasswordSchema.validate(req.body);
+      const { error, value } = resetPasswordWithTokenSchema.validate(req.body);
 
       if (error) {
         const validationErrors = error.details.map((detail) => ({
@@ -566,10 +613,15 @@ export class AuthController {
         return;
       }
 
-      const result = await AuthService.resetPassword(
-        value.phoneNumber,
-        value.resetCode,
-        value.newPassword
+      // Log the token-based password reset attempt in development
+      if (process.env.NODE_ENV === "development") {
+        logger.info("🔐 PASSWORD RESET WITH TOKEN RECEIVED");
+        logger.info(`Token: ${token.substring(0, 8)}...`);
+      }
+
+      const result = await AuthService.resetPasswordWithToken(
+        token,
+        value.password
       );
 
       const statusCode = result.success ? 200 : result.error?.statusCode || 500;
@@ -598,6 +650,100 @@ export class AuthController {
       apiLogger(
         "POST",
         "/auth/reset-password",
+        500,
+        Date.now() - startTime,
+        undefined,
+        error
+      );
+
+      res.status(500).json({
+        success: false,
+        error: {
+          code: "SYS_005",
+          message: "Internal server error",
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  /**
+   * Reset password with SMS code
+   */
+  public static async resetPasswordWithCode(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    const startTime = Date.now();
+
+    try {
+      // Validate request body
+      const { error, value } = resetPasswordWithCodeSchema.validate(req.body);
+
+      if (error) {
+        const validationErrors = error.details.map((detail) => ({
+          field: detail.path.join("."),
+          message: detail.message,
+        }));
+
+        apiLogger(
+          "POST",
+          "/auth/reset-password-code",
+          400,
+          Date.now() - startTime
+        );
+
+        res.status(400).json({
+          success: false,
+          error: {
+            code: "VAL_001",
+            message: "Validation failed",
+            details: { validationErrors },
+          },
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
+
+      // Log the code-based password reset attempt in development
+      if (process.env.NODE_ENV === "development") {
+        logger.info("📱 PASSWORD RESET WITH CODE RECEIVED");
+        logger.info(`Phone: ${value.phoneNumber}`);
+        logger.info(`Code: ${value.resetCode}`);
+      }
+
+      const result = await AuthService.resetPasswordWithCode(
+        value.phoneNumber,
+        value.resetCode,
+        value.newPassword
+      );
+
+      const statusCode = result.success ? 200 : result.error?.statusCode || 500;
+
+      apiLogger(
+        "POST",
+        "/auth/reset-password-code",
+        statusCode,
+        Date.now() - startTime
+      );
+
+      if (result.success) {
+        res.status(200).json({
+          success: true,
+          data: result.data,
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        res.status(statusCode).json({
+          success: false,
+          error: result.error,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    } catch (error) {
+      apiLogger(
+        "POST",
+        "/auth/reset-password-code",
         500,
         Date.now() - startTime,
         undefined,
