@@ -42,7 +42,6 @@ const getSequelizeConfig = () => {
   if (process.env.DATABASE_URL) {
     return {
       ...baseConfig,
-      url: process.env.DATABASE_URL,
       dialectOptions: {
         ...commonDialectOptions,
         // IPv6 support - only add if not in production to avoid conflicts
@@ -72,7 +71,9 @@ const getSequelizeConfig = () => {
 };
 
 // Create Sequelize instance
-const sequelize = new Sequelize(getSequelizeConfig());
+const sequelize = process.env.DATABASE_URL
+  ? new Sequelize(process.env.DATABASE_URL, getSequelizeConfig())
+  : new Sequelize(getSequelizeConfig());
 
 // Test database connection
 export const testConnection = async (): Promise<boolean> => {

@@ -27,29 +27,51 @@ export const testDatabaseConfig = async () => {
       logger.info(`User: ${config.database.user}`);
     }
 
-    // Test connection
-    const sequelize = new Sequelize({
-      dialect: "postgres",
-      url: process.env.DATABASE_URL,
-      host: process.env.DATABASE_URL ? undefined : config.database.host,
-      port: process.env.DATABASE_URL ? undefined : config.database.port,
-      database: process.env.DATABASE_URL ? undefined : config.database.name,
-      username: process.env.DATABASE_URL ? undefined : config.database.user,
-      password: process.env.DATABASE_URL ? undefined : config.database.password,
-      logging: false,
-      dialectOptions: {
-        ssl:
-          config.env === "production"
-            ? {
-                require: true,
-                rejectUnauthorized: false,
-              }
-            : false,
-        connectTimeout: 60000,
-        keepAlive: true,
-        keepAliveInitialDelay: 0,
-      },
-    });
+    // Test connection - use conditional configuration to avoid mixing url with individual params
+    let sequelize: Sequelize;
+
+    if (process.env.DATABASE_URL) {
+      // Use DATABASE_URL configuration
+      sequelize = new Sequelize(process.env.DATABASE_URL, {
+        dialect: "postgres",
+        logging: false,
+        dialectOptions: {
+          ssl:
+            config.env === "production"
+              ? {
+                  require: true,
+                  rejectUnauthorized: false,
+                }
+              : false,
+          connectTimeout: 60000,
+          keepAlive: true,
+          keepAliveInitialDelay: 0,
+        },
+      });
+    } else {
+      // Use individual configuration parameters
+      sequelize = new Sequelize({
+        dialect: "postgres",
+        host: config.database.host,
+        port: config.database.port,
+        database: config.database.name,
+        username: config.database.user,
+        password: config.database.password,
+        logging: false,
+        dialectOptions: {
+          ssl:
+            config.env === "production"
+              ? {
+                  require: true,
+                  rejectUnauthorized: false,
+                }
+              : false,
+          connectTimeout: 60000,
+          keepAlive: true,
+          keepAliveInitialDelay: 0,
+        },
+      });
+    }
 
     await sequelize.authenticate();
     logger.info("✅ Database connection test successful!");
