@@ -496,10 +496,16 @@ export class AuthService {
       const resetExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
       // Debug logging for token generation
-      if (process.env.NODE_ENV === "development") {
-        logger.info("🔐 TOKEN GENERATION DEBUG");
-        logger.info(`Generated raw token: ${resetToken}`);
-        logger.info(`Token expires at: ${resetExpires}`);
+      if (process.env.NODE_ENV === "development" || !process.env.NODE_ENV) {
+        const logMessage = [
+          "🔐 TOKEN GENERATION DEBUG",
+          `Generated raw token: ${resetToken}`,
+          `Token expires at: ${resetExpires}`,
+        ].join("\n");
+
+        // Log to both console and logger for visibility
+        console.log(logMessage);
+        logger.info(logMessage);
       }
 
       await user.update({
@@ -536,10 +542,10 @@ export class AuthService {
         );
 
         // For development, log the reset code
-        if (process.env.NODE_ENV === "development") {
-          logger.info(
-            `Password reset code for ${user.phoneNumber}: ${resetCode}`
-          );
+        if (process.env.NODE_ENV === "development" || !process.env.NODE_ENV) {
+          const logMessage = `Password reset code for ${user.phoneNumber}: ${resetCode}`;
+          console.log(logMessage);
+          logger.info(logMessage);
         }
       }
 
@@ -549,19 +555,21 @@ export class AuthService {
       });
 
       // Log password reset request details in development
-      if (process.env.NODE_ENV === "development") {
-        logger.info("🔐 PASSWORD RESET REQUEST PROCESSED");
-        logger.info(
-          `User: ${user.firstName} ${user.lastName} (ID: ${user.id})`
-        );
-        logger.info(`Method: ${method.toUpperCase()}`);
-        logger.info(`Identifier: ${isEmail ? user.email : user.phoneNumber}`);
-        logger.info(`Message Sent: ${messageSent ? "✅ Yes" : "❌ No"}`);
-        if (!isEmail) {
-          logger.info(`📱 Check SMS logs above for the reset code`);
-        } else {
-          logger.info(`📧 Check email logs above for the reset link`);
-        }
+      if (process.env.NODE_ENV === "development" || !process.env.NODE_ENV) {
+        const logMessage = [
+          "🔐 PASSWORD RESET REQUEST PROCESSED",
+          `User: ${user.firstName} ${user.lastName} (ID: ${user.id})`,
+          `Method: ${method.toUpperCase()}`,
+          `Identifier: ${isEmail ? user.email : user.phoneNumber}`,
+          `Message Sent: ${messageSent ? "✅ Yes" : "❌ No"}`,
+          !isEmail
+            ? `📱 Check SMS logs above for the reset code`
+            : `📧 Check email logs above for the reset link`,
+        ].join("\n");
+
+        // Log to both console and logger for visibility
+        console.log(logMessage);
+        logger.info(logMessage);
       }
 
       return {
@@ -599,9 +607,15 @@ export class AuthService {
   ): Promise<ServiceResponse<{ message: string }>> {
     try {
       // Debug logging for development
-      if (process.env.NODE_ENV === "development") {
-        logger.info("🔍 TOKEN VERIFICATION DEBUG");
-        logger.info(`Raw token received: ${token}`);
+      if (process.env.NODE_ENV === "development" || !process.env.NODE_ENV) {
+        const logMessage = [
+          "🔍 TOKEN VERIFICATION DEBUG",
+          `Raw token received: ${token}`,
+        ].join("\n");
+
+        // Log to both console and logger for visibility
+        console.log(logMessage);
+        logger.info(logMessage);
       }
 
       // Find user by token (using raw token)
@@ -615,12 +629,18 @@ export class AuthService {
       });
 
       // More debug logging
-      if (process.env.NODE_ENV === "development") {
+      if (process.env.NODE_ENV === "development" || !process.env.NODE_ENV) {
         if (!user) {
-          logger.info("❌ No user found with matching token");
-          logger.info("Check if token has expired or was already used");
+          const logMessage = [
+            "❌ No user found with matching token",
+            "Check if token has expired or was already used",
+          ].join("\n");
+          console.log(logMessage);
+          logger.info(logMessage);
         } else {
-          logger.info(`✅ User found: ${user.firstName} ${user.lastName}`);
+          const logMessage = `✅ User found: ${user.firstName} ${user.lastName}`;
+          console.log(logMessage);
+          logger.info(logMessage);
         }
       }
 
@@ -648,14 +668,18 @@ export class AuthService {
       auditLogger("PASSWORD_RESET", user.id, { method: "token" });
 
       // Log password reset completion in development
-      if (process.env.NODE_ENV === "development") {
-        logger.info("✅ PASSWORD RESET COMPLETED (EMAIL TOKEN)");
-        logger.info(
-          `User: ${user.firstName} ${user.lastName} (ID: ${user.id})`
-        );
-        logger.info(`Email: ${user.email}`);
-        logger.info(`Token Used: ${token.substring(0, 8)}...`);
-        logger.info(`All user sessions have been invalidated`);
+      if (process.env.NODE_ENV === "development" || !process.env.NODE_ENV) {
+        const logMessage = [
+          "✅ PASSWORD RESET COMPLETED (EMAIL TOKEN)",
+          `User: ${user.firstName} ${user.lastName} (ID: ${user.id})`,
+          `Email: ${user.email}`,
+          `Token Used: ${token.substring(0, 8)}...`,
+          `All user sessions have been invalidated`,
+        ].join("\n");
+
+        // Log to both console and logger for visibility
+        console.log(logMessage);
+        logger.info(logMessage);
       }
 
       return {
@@ -737,14 +761,18 @@ export class AuthService {
       });
 
       // Log password reset completion in development
-      if (process.env.NODE_ENV === "development") {
-        logger.info("✅ PASSWORD RESET COMPLETED (SMS CODE)");
-        logger.info(
-          `User: ${user.firstName} ${user.lastName} (ID: ${user.id})`
-        );
-        logger.info(`Phone: ${formattedPhone}`);
-        logger.info(`Code Used: ${resetCode}`);
-        logger.info(`All user sessions have been invalidated`);
+      if (process.env.NODE_ENV === "development" || !process.env.NODE_ENV) {
+        const logMessage = [
+          "✅ PASSWORD RESET COMPLETED (SMS CODE)",
+          `User: ${user.firstName} ${user.lastName} (ID: ${user.id})`,
+          `Phone: ${formattedPhone}`,
+          `Code Used: ${resetCode}`,
+          `All user sessions have been invalidated`,
+        ].join("\n");
+
+        // Log to both console and logger for visibility
+        console.log(logMessage);
+        logger.info(logMessage);
       }
 
       return {

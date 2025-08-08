@@ -70,7 +70,7 @@ app.use(
         "https://www.mwukenya.co.ke",
         "https://mwukenya.co.ke",
         "https://app.mwukenya.co.ke",
-        "https://mwukenya-production.up.railway.app"
+        "https://mwukenya-production.up.railway.app",
       ];
 
       if (allowedOrigins.includes(origin)) {
@@ -240,9 +240,6 @@ const initializeApp = async (): Promise<void> => {
     // Initialize database models
     await initializeDatabase();
     logger.info("Database models initialized");
-
-    //Temporary sync database
-    await syncDatabase(true);
 
     logger.info("Application initialized successfully");
   } catch (error) {

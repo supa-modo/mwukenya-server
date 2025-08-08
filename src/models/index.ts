@@ -65,10 +65,27 @@ export const initializeDatabase = async (): Promise<void> => {
     await sequelize.authenticate();
     console.log("Database connection has been established successfully.");
 
-    // Sync models (use with caution in production)
-    if (process.env.NODE_ENV === "development") {
-      await sequelize.sync({ alter: true });
-      console.log("Database models synchronized.");
+    // Check if tables exist by trying to query the users table
+    try {
+      await sequelize.query("SELECT 1 FROM users LIMIT 1");
+      console.log("Database tables already exist, skipping sync.");
+    } catch (error) {
+      // If the query fails, it means tables don't exist, so create them
+      console.log("Database tables don't exist, creating them...");
+      if (process.env.NODE_ENV === "development" || !process.env.NODE_ENV) {
+        await sequelize.sync({ alter: false });
+        console.log("Database models synchronized.");
+      } else {
+        // In production, only sync if explicitly requested
+        if (process.env.FORCE_SYNC === "true") {
+          await sequelize.sync({ alter: true });
+          console.log("Database models synchronized (production).");
+        } else {
+          throw new Error(
+            "Database tables don't exist and FORCE_SYNC is not enabled"
+          );
+        }
+      }
     }
   } catch (error) {
     console.error("Unable to connect to the database:", error);

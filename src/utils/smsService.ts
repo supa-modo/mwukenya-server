@@ -26,19 +26,25 @@ class SMSService {
   ): Promise<boolean> {
     const message = `Hello ${firstName}, your MWU Kenya password reset code is: ${resetCode}. This code expires in 10 minutes. If you didn't request this, please ignore.`;
 
-    // For development, log detailed SMS content to console
-    if (process.env.NODE_ENV === "development") {
-      logger.info("=".repeat(80));
-      logger.info("📱 PASSWORD RESET SMS (DEVELOPMENT MODE)");
-      logger.info("=".repeat(80));
-      logger.info(`To: ${phoneNumber}`);
-      logger.info(`Name: ${firstName}`);
-      logger.info(`Reset Code: ${resetCode}`);
-      logger.info("SMS Content:");
-      logger.info(`Message: ${message}`);
-      logger.info(`⚠️  Code expires in 10 minutes`);
-      logger.info(`💡 Use this code on: /reset-password-code page`);
-      logger.info("=".repeat(80));
+    // For development, log detailed SMS content to console and logs
+    if (process.env.NODE_ENV === "development" || !process.env.NODE_ENV) {
+      const logMessage = [
+        "=".repeat(80),
+        "📱 PASSWORD RESET SMS (DEVELOPMENT MODE)",
+        "=".repeat(80),
+        `To: ${phoneNumber}`,
+        `Name: ${firstName}`,
+        `Reset Code: ${resetCode}`,
+        "SMS Content:",
+        `Message: ${message}`,
+        `⚠️  Code expires in 10 minutes`,
+        `💡 Use this code on: /reset-password-code page`,
+        "=".repeat(80),
+      ].join("\n");
+
+      // Log to both console and logger for visibility
+      console.log(logMessage);
+      logger.info(logMessage);
 
       // In development, always return true for testing
       return true;

@@ -55,23 +55,27 @@ class EmailService {
       process.env.FRONTEND_URL || "http://localhost:5173"
     }/reset-password/${resetToken}`;
 
-    // For development, log the email content to console
-    if (process.env.NODE_ENV === "development") {
-      logger.info("=".repeat(80));
-      logger.info("📧 PASSWORD RESET EMAIL (DEVELOPMENT MODE)");
-      logger.info("=".repeat(80));
-      logger.info(`To: ${email}`);
-      logger.info(`Name: ${firstName}`);
-      logger.info(`Reset Token: ${resetToken}`);
-      logger.info(`Reset URL: ${resetUrl}`);
-      logger.info("Email Content:");
-      logger.info(`Subject: Password Reset Request - MWU Kenya`);
-      logger.info(
-        `Message: Hello ${firstName}, click the link below to reset your password:`
-      );
-      logger.info(`Link: ${resetUrl}`);
-      logger.info(`⚠️  Link expires in 10 minutes`);
-      logger.info("=".repeat(80));
+    // For development, log the email content to console and logs
+    if (process.env.NODE_ENV === "development" || !process.env.NODE_ENV) {
+      const logMessage = [
+        "=".repeat(80),
+        "📧 PASSWORD RESET EMAIL (DEVELOPMENT MODE)",
+        "=".repeat(80),
+        `To: ${email}`,
+        `Name: ${firstName}`,
+        `Reset Token: ${resetToken}`,
+        `Reset URL: ${resetUrl}`,
+        "Email Content:",
+        `Subject: Password Reset Request - MWU Kenya`,
+        `Message: Hello ${firstName}, click the link below to reset your password:`,
+        `Link: ${resetUrl}`,
+        `⚠️  Link expires in 10 minutes`,
+        "=".repeat(80),
+      ].join("\n");
+
+      // Log to both console and logger for visibility
+      console.log(logMessage);
+      logger.info(logMessage);
 
       // In development, always return true for testing
       return true;

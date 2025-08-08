@@ -509,11 +509,17 @@ export class AuthController {
       }
 
       // Log the password reset request in development
-      if (process.env.NODE_ENV === "development") {
+      if (process.env.NODE_ENV === "development" || !process.env.NODE_ENV) {
         const method = value.identifier.includes("@") ? "EMAIL" : "SMS";
-        logger.info("🔑 FORGOT PASSWORD REQUEST RECEIVED");
-        logger.info(`Method: ${method}`);
-        logger.info(`Identifier: ${value.identifier}`);
+        const logMessage = [
+          "🔑 FORGOT PASSWORD REQUEST RECEIVED",
+          `Method: ${method}`,
+          `Identifier: ${value.identifier}`,
+        ].join("\n");
+
+        // Log to both console and logger for visibility
+        console.log(logMessage);
+        logger.info(logMessage);
       }
 
       const result = await AuthService.requestPasswordReset(value.identifier);
