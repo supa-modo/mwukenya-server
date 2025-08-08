@@ -47,7 +47,7 @@ const logger = winston.createLogger({
     env: config.env,
   },
   transports: [
-    // Console transport
+    // Console transport - only one console transport
     new winston.transports.Console({
       format: config.env === "production" ? logFormat : consoleFormat,
     }),
@@ -74,15 +74,6 @@ const logger = winston.createLogger({
     new winston.transports.File({ filename: "logs/rejections.log" }),
   ],
 });
-
-// If we're not in production, log to the console with the format
-if (config.env !== "production") {
-  logger.add(
-    new winston.transports.Console({
-      format: consoleFormat,
-    })
-  );
-}
 
 // Create logs directory if it doesn't exist
 import fs from "fs";

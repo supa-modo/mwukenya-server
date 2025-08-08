@@ -4,15 +4,25 @@ import dotenv from "dotenv";
 dotenv.config();
 
 // Environment validation
-const requiredEnvVars = [
-  "DB_HOST",
-  "DB_PORT",
-  "DB_NAME",
-  "DB_USER",
-  "DB_PASSWORD",
-  "JWT_SECRET",
-  "JWT_REFRESH_SECRET",
-];
+const requiredEnvVars = ["JWT_SECRET", "JWT_REFRESH_SECRET"];
+
+// Check if DATABASE_URL is provided (production) or individual DB vars (development)
+const isProdEnv = process.env.NODE_ENV === "production";
+const hasDatabaseUrl = !!process.env.DATABASE_URL;
+
+if (isProdEnv && !hasDatabaseUrl) {
+  // In production, require DATABASE_URL
+  requiredEnvVars.push("DATABASE_URL");
+} else if (!isProdEnv && !hasDatabaseUrl) {
+  // In development, require individual DB vars if DATABASE_URL is not provided
+  requiredEnvVars.push(
+    "DB_HOST",
+    "DB_PORT",
+    "DB_NAME",
+    "DB_USER",
+    "DB_PASSWORD"
+  );
+}
 
 // Check if all required environment variables are set
 for (const envVar of requiredEnvVars) {
@@ -21,23 +31,59 @@ for (const envVar of requiredEnvVars) {
   }
 }
 
+// Parse DATABASE_URL if provided
+const parseDatabaseUrl = (url: string) => {
+  try {
+    const parsed = new URL(url);
+    return {
+      host: parsed.hostname,
+      port: parseInt(parsed.port || "5432", 10),
+      name: parsed.pathname.slice(1), // Remove leading slash
+      user: parsed.username,
+      password: parsed.password,
+      dialect: parsed.protocol.replace(":", ""), // Remove colon from protocol
+    };
+  } catch (error) {
+    throw new Error(`Invalid DATABASE_URL: ${error}`);
+  }
+};
+
+// Get database configuration
+const getDatabaseConfig = () => {
+  if (hasDatabaseUrl) {
+    const parsed = parseDatabaseUrl(process.env.DATABASE_URL!);
+    return {
+      host: parsed.host,
+      port: parsed.port,
+      name: parsed.name,
+      user: parsed.user,
+      password: parsed.password,
+      dialect: parsed.dialect === "postgresql" ? "postgres" : parsed.dialect,
+      logging: process.env.DB_LOGGING === "true",
+    };
+  } else {
+    return {
+      host: process.env.DB_HOST!,
+      port: parseInt(process.env.DB_PORT!, 10),
+      name: process.env.DB_NAME!,
+      user: process.env.DB_USER!,
+      password: process.env.DB_PASSWORD!,
+      dialect: process.env.DB_DIALECT || "postgres",
+      logging: process.env.DB_LOGGING === "true",
+    };
+  }
+};
+
 // Configuration object
 export const config = {
   env: process.env.NODE_ENV || "development",
   port: parseInt(process.env.PORT || "3001", 10),
   appName: process.env.APP_NAME || "MWU Kenya Platform",
   apiVersion: process.env.API_VERSION || "v1",
+  apiUrl: process.env.API_URL || "http://localhost:5000",
 
   // Database configuration
-  database: {
-    host: process.env.DB_HOST!,
-    port: parseInt(process.env.DB_PORT!, 10),
-    name: process.env.DB_NAME!,
-    user: process.env.DB_USER!,
-    password: process.env.DB_PASSWORD!,
-    dialect: process.env.DB_DIALECT || "postgres",
-    logging: process.env.DB_LOGGING === "true",
-  },
+  database: getDatabaseConfig(),
 
   // Redis configuration
   redis: {

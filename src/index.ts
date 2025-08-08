@@ -66,8 +66,10 @@ app.use(
       const allowedOrigins = [
         "http://localhost:3000",
         "http://localhost:5173",
-        "https://mwukenya.org",
-        "https://app.mwukenya.org",
+        "https://mwukenya.vercel.app",
+        "https://www.mwukenya.co.ke",
+        "https://mwukenya.co.ke",
+        "https://app.mwukenya.co.ke",
         // Add your production domains here
       ];
 
@@ -253,9 +255,9 @@ const server = app.listen(config.port, async () => {
 📍 Environment: ${config.env}
 🌐 Port: ${config.port}
 📊 API Version: ${config.apiVersion}
-🔗 Base URL: http://localhost:${config.port}
-📋 API Endpoints: http://localhost:${config.port}/api/${config.apiVersion}
-💚 Health Check: http://localhost:${config.port}/health
+🔗 Base URL: ${config.apiUrl}
+📋 API Endpoints: ${config.apiUrl}/api/${config.apiVersion}
+💚 Health Check: ${config.apiUrl}/health
   `);
 
   // Initialize application after server starts
