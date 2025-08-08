@@ -4,7 +4,7 @@ import helmet from "helmet";
 import compression from "compression";
 import morgan from "morgan";
 import { config, validateConfig } from "./config";
-import { testConnection } from "./config/database";
+import { syncDatabase, testConnection } from "./config/database";
 import { testRedisConnection } from "./config/redis";
 import { initializeDatabase } from "./models";
 import routes from "./routes";
@@ -70,7 +70,7 @@ app.use(
         "https://www.mwukenya.co.ke",
         "https://mwukenya.co.ke",
         "https://app.mwukenya.co.ke",
-        // Add your production domains here
+        "https://mwukenya-production.up.railway.app"
       ];
 
       if (allowedOrigins.includes(origin)) {
@@ -240,6 +240,9 @@ const initializeApp = async (): Promise<void> => {
     // Initialize database models
     await initializeDatabase();
     logger.info("Database models initialized");
+
+    //Temporary sync database
+    await syncDatabase(true);
 
     logger.info("Application initialized successfully");
   } catch (error) {
