@@ -9,6 +9,22 @@ const requiredEnvVars = ["JWT_SECRET", "JWT_REFRESH_SECRET"];
 // Check if DATABASE_URL is provided (production) or individual DB vars (development)
 const isProdEnv = process.env.NODE_ENV === "production";
 const hasDatabaseUrl = !!process.env.DATABASE_URL;
+const hasRedisUrl = !!process.env.REDIS_URL;
+
+// Parse REDIS_URL if provided
+const parseRedisUrl = (url: string) => {
+  try {
+    const parsed = new URL(url);
+    return {
+      host: parsed.hostname,
+      port: parseInt(parsed.port || "6379", 10),
+      password: parsed.password || "",
+      db: parseInt(parsed.pathname.slice(1) || "0", 10), // Remove leading slash and default to 0
+    };
+  } catch (error) {
+    throw new Error(`Invalid REDIS_URL: ${error}`);
+  }
+};
 
 if (isProdEnv && !hasDatabaseUrl) {
   // In production, require DATABASE_URL
@@ -24,10 +40,22 @@ if (isProdEnv && !hasDatabaseUrl) {
   );
 }
 
+// Note: Redis is optional, so we don't add it to requiredEnvVars
+// But we'll validate REDIS_URL if it's provided
+
 // Check if all required environment variables are set
 for (const envVar of requiredEnvVars) {
   if (!process.env[envVar]) {
     throw new Error(`Required environment variable ${envVar} is not set`);
+  }
+}
+
+// Validate REDIS_URL if provided
+if (hasRedisUrl) {
+  try {
+    parseRedisUrl(process.env.REDIS_URL!);
+  } catch (error) {
+    throw new Error(`Invalid REDIS_URL: ${error}`);
   }
 }
 
@@ -74,6 +102,26 @@ const getDatabaseConfig = () => {
   }
 };
 
+// Get Redis configuration
+const getRedisConfig = () => {
+  if (process.env.REDIS_URL) {
+    const parsed = parseRedisUrl(process.env.REDIS_URL);
+    return {
+      host: parsed.host,
+      port: parsed.port,
+      password: parsed.password,
+      db: parsed.db,
+    };
+  } else {
+    return {
+      host: process.env.REDIS_HOST || "localhost",
+      port: parseInt(process.env.REDIS_PORT || "6379", 10),
+      password: process.env.REDIS_PASSWORD || "",
+      db: parseInt(process.env.REDIS_DB || "0", 10),
+    };
+  }
+};
+
 // Configuration object
 export const config = {
   env: process.env.NODE_ENV || "development",
@@ -86,12 +134,7 @@ export const config = {
   database: getDatabaseConfig(),
 
   // Redis configuration
-  redis: {
-    host: process.env.REDIS_HOST || "localhost",
-    port: parseInt(process.env.REDIS_PORT || "6379", 10),
-    password: process.env.REDIS_PASSWORD || "",
-    db: parseInt(process.env.REDIS_DB || "0", 10),
-  },
+  redis: getRedisConfig(),
 
   // JWT configuration
   jwt: {

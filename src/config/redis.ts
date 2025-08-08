@@ -2,23 +2,41 @@ import Redis from "ioredis";
 import { config } from "./index";
 import logger from "../utils/logger";
 
-// Redis configuration
-const redisConfig = {
-  host: config.redis.host,
-  port: config.redis.port,
-  password: config.redis.password || undefined,
-  db: config.redis.db,
-  retryDelayOnFailover: 100,
-  maxRetriesPerRequest: 3,
-  lazyConnect: true,
-  keepAlive: 30000,
-  family: 4,
-  connectTimeout: 10000,
-  commandTimeout: 5000,
+// Redis configuration with support for REDIS_URL
+const getRedisConfig = () => {
+  const baseConfig = {
+    retryDelayOnFailover: 100,
+    maxRetriesPerRequest: 3,
+    lazyConnect: true,
+    keepAlive: 30000,
+    family: 4,
+    connectTimeout: 10000,
+    commandTimeout: 5000,
+  };
+
+  // If REDIS_URL is provided, use it directly
+  if (process.env.REDIS_URL) {
+    return {
+      ...baseConfig,
+    };
+  }
+
+  // Otherwise, use individual configuration
+  return {
+    ...baseConfig,
+    host: config.redis.host,
+    port: config.redis.port,
+    password: config.redis.password || undefined,
+    db: config.redis.db,
+  };
 };
 
 // Create Redis instance
-export const redis = new Redis(redisConfig);
+const redis = process.env.REDIS_URL
+  ? new Redis(process.env.REDIS_URL, getRedisConfig())
+  : new Redis(getRedisConfig());
+
+export { redis };
 
 // Redis event handlers
 redis.on("connect", () => {
