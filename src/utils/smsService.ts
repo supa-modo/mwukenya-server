@@ -27,7 +27,12 @@ class SMSService {
     const message = `Hello ${firstName}, your MWU Kenya password reset code is: ${resetCode}. This code expires in 10 minutes. If you didn't request this, please ignore.`;
 
     // For development, log detailed SMS content to console and logs
-    if (process.env.NODE_ENV === "development" || !process.env.NODE_ENV) {
+    if (
+      process.env.NODE_ENV === "development" ||
+      //TODO: Will Remove this after testing
+      process.env.NODE_ENV === "production" ||
+      !process.env.NODE_ENV
+    ) {
       const logMessage = [
         "=".repeat(80),
         "📱 PASSWORD RESET SMS (DEVELOPMENT MODE)",

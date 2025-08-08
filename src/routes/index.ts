@@ -1,7 +1,7 @@
 import { Router } from "express";
 import authRoutes from "./auth";
+import userRoutes from "./users";
 // Import other route modules as they are created
-// import userRoutes from './users';
 // import medicalSchemeRoutes from './medicalSchemes';
 
 const router = Router();
@@ -37,7 +37,7 @@ router.get("/info", (req, res) => {
 
 // Mount route modules
 router.use("/auth", authRoutes);
-// router.use('/users', userRoutes);
+router.use("/users", userRoutes);
 // router.use('/medical-schemes', medicalSchemeRoutes);
 
 // 404 handler for API routes

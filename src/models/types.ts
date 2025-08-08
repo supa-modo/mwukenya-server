@@ -107,6 +107,11 @@ export interface UserAttributes {
   passwordResetExpires?: Date;
   createdAt: Date;
   updatedAt: Date;
+  // Association properties
+  delegate?: UserAttributes;
+  coordinator?: UserAttributes;
+  delegateMembers?: UserAttributes[];
+  coordinatorDelegates?: UserAttributes[];
 }
 
 export interface UserCreationAttributes
