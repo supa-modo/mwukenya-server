@@ -72,16 +72,10 @@ const registerSchema = Joi.object({
     "string.alphanum": "ID number should only contain letters and numbers",
     "any.required": "ID number is required",
   }),
-  password: Joi.string()
-    .min(8)
-    .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/)
-    .required()
-    .messages({
-      "string.min": "Password must be at least 8 characters long",
-      "string.pattern.base":
-        "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character",
-      "any.required": "Password is required",
-    }),
+  password: Joi.string().min(8).required().messages({
+    "string.min": "Password must be at least 8 characters long",
+    "any.required": "Password is required",
+  }),
   gender: Joi.string().valid("Male", "Female").optional().messages({
     "any.only": "Gender must be either Male or Female",
   }),
@@ -153,16 +147,10 @@ const forgotPasswordSchema = Joi.object({
 });
 
 const resetPasswordWithTokenSchema = Joi.object({
-  password: Joi.string()
-    .min(8)
-    .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/)
-    .required()
-    .messages({
-      "string.min": "Password must be at least 8 characters long",
-      "string.pattern.base":
-        "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character",
-      "any.required": "Password is required",
-    }),
+  password: Joi.string().min(8).required().messages({
+    "string.min": "Password must be at least 8 characters long",
+    "any.required": "Password is required",
+  }),
 });
 
 const resetPasswordWithCodeSchema = Joi.object({
@@ -182,16 +170,10 @@ const resetPasswordWithCodeSchema = Joi.object({
       "string.pattern.base": "Reset code must contain only numbers",
       "any.required": "Reset code is required",
     }),
-  newPassword: Joi.string()
-    .min(8)
-    .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/)
-    .required()
-    .messages({
-      "string.min": "Password must be at least 8 characters long",
-      "string.pattern.base":
-        "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character",
-      "any.required": "New password is required",
-    }),
+  newPassword: Joi.string().min(8).required().messages({
+    "string.min": "Password must be at least 8 characters long",
+    "any.required": "New password is required",
+  }),
 });
 
 export class AuthController {
@@ -616,7 +598,7 @@ export class AuthController {
       // Log the token-based password reset attempt in development
       if (process.env.NODE_ENV === "development") {
         logger.info("🔐 PASSWORD RESET WITH TOKEN RECEIVED");
-        logger.info(`Token: ${token.substring(0, 8)}...`);
+        logger.info(`Token: ${token.substring(0, 10)}...`);
       }
 
       const result = await AuthService.resetPasswordWithToken(
@@ -624,28 +606,13 @@ export class AuthController {
         value.password
       );
 
-      const statusCode = result.success ? 200 : result.error?.statusCode || 500;
+      apiLogger("POST", "/auth/reset-password", 200, Date.now() - startTime);
 
-      apiLogger(
-        "POST",
-        "/auth/reset-password",
-        statusCode,
-        Date.now() - startTime
-      );
-
-      if (result.success) {
-        res.status(200).json({
-          success: true,
-          data: result.data,
-          timestamp: new Date().toISOString(),
-        });
-      } else {
-        res.status(statusCode).json({
-          success: false,
-          error: result.error,
-          timestamp: new Date().toISOString(),
-        });
-      }
+      res.status(200).json({
+        success: true,
+        data: result.data,
+        timestamp: new Date().toISOString(),
+      });
     } catch (error) {
       apiLogger(
         "POST",
@@ -668,7 +635,7 @@ export class AuthController {
   }
 
   /**
-   * Reset password with SMS code
+   * Reset password with code (from SMS)
    */
   public static async resetPasswordWithCode(
     req: Request,
@@ -707,7 +674,7 @@ export class AuthController {
 
       // Log the code-based password reset attempt in development
       if (process.env.NODE_ENV === "development") {
-        logger.info("📱 PASSWORD RESET WITH CODE RECEIVED");
+        logger.info("🔐 PASSWORD RESET WITH CODE RECEIVED");
         logger.info(`Phone: ${value.phoneNumber}`);
         logger.info(`Code: ${value.resetCode}`);
       }
@@ -718,28 +685,18 @@ export class AuthController {
         value.newPassword
       );
 
-      const statusCode = result.success ? 200 : result.error?.statusCode || 500;
-
       apiLogger(
         "POST",
         "/auth/reset-password-code",
-        statusCode,
+        200,
         Date.now() - startTime
       );
 
-      if (result.success) {
-        res.status(200).json({
-          success: true,
-          data: result.data,
-          timestamp: new Date().toISOString(),
-        });
-      } else {
-        res.status(statusCode).json({
-          success: false,
-          error: result.error,
-          timestamp: new Date().toISOString(),
-        });
-      }
+      res.status(200).json({
+        success: true,
+        data: result.data,
+        timestamp: new Date().toISOString(),
+      });
     } catch (error) {
       apiLogger(
         "POST",
@@ -761,5 +718,3 @@ export class AuthController {
     }
   }
 }
-
-export default AuthController;
