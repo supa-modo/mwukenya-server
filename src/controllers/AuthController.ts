@@ -20,7 +20,50 @@ const loginSchema = Joi.object({
     "string.min": "Password must be at least 6 characters long",
     "any.required": "Password is required",
   }),
-}).or("phoneNumber", "identifier");
+  isAdminLogin: Joi.boolean().optional(),
+})
+  .or("phoneNumber", "identifier")
+  .custom((value, helpers) => {
+    // Custom validation to ensure at least one identifier is provided
+    if (!value.phoneNumber && !value.identifier) {
+      return helpers.error("any.invalid");
+    }
+    return value;
+  }, "at-least-one-identifier");
+
+// Admin login validation schema - allows email or ID number, no phone number
+const adminLoginSchema = Joi.object({
+  identifier: Joi.string().required().messages({
+    "any.required": "Email or ID number is required",
+  }),
+  password: Joi.string().min(6).required().messages({
+    "string.min": "Password must be at least 6 characters long",
+    "any.required": "Password is required",
+  }),
+  isAdminLogin: Joi.boolean().valid(true).required().messages({
+    "any.only": "Admin login flag is required",
+  }),
+}).custom((value, helpers) => {
+  // Validate identifier format based on whether it looks like an email or ID number
+  const { identifier } = value;
+
+  if (identifier.includes("@")) {
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(identifier)) {
+      return helpers.error("any.invalid", { message: "Invalid email format" });
+    }
+  } else {
+    // ID number validation
+    if (identifier.length < 6 || identifier.length > 20) {
+      return helpers.error("any.invalid", {
+        message: "ID number must be between 6 and 20 characters",
+      });
+    }
+  }
+
+  return value;
+}, "admin-identifier-validation");
 
 const registerSchema = Joi.object({
   firstName: Joi.string()
@@ -184,8 +227,12 @@ export class AuthController {
     const startTime = Date.now();
 
     try {
+      // Determine which validation schema to use
+      const isAdminLogin = req.body.isAdminLogin === true;
+      const validationSchema = isAdminLogin ? adminLoginSchema : loginSchema;
+
       // Validate request body
-      const { error, value } = loginSchema.validate(req.body);
+      const { error, value } = validationSchema.validate(req.body);
 
       if (error) {
         const validationErrors = error.details.map((detail) => ({

@@ -507,6 +507,7 @@ export interface LoginCredentials {
   phoneNumber?: string;
   identifier?: string; // Can be phone number or ID number
   password: string;
+  isAdminLogin?: boolean; // Flag to indicate admin login
 }
 
 export interface RegistrationData

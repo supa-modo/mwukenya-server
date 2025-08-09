@@ -52,12 +52,23 @@ export class AuthService {
     userAgent?: string
   ): Promise<ServiceResponse<LoginResponse>> {
     try {
-      const { phoneNumber, identifier, password } = credentials;
+      const { phoneNumber, identifier, password, isAdminLogin } = credentials;
       const loginIdentifier = phoneNumber || identifier;
+
+      logger.info("Login attempt", {
+        phoneNumber,
+        identifier,
+        hasPassword: !!password,
+        isAdminLogin,
+        ipAddress,
+        userAgent,
+      });
 
       if (!loginIdentifier) {
         throw new ApiError(
-          "Phone number or ID number is required",
+          isAdminLogin
+            ? "Email or ID number is required"
+            : "Phone number or ID number is required",
           "AUTH_001",
           400
         );
@@ -76,51 +87,189 @@ export class AuthService {
         throw ApiError.rateLimitExceeded();
       }
 
-      // Find user by phone number or ID number
+      // Find user by appropriate identifier
       let user = null;
 
-      if (phoneNumber) {
-        // Try to find by phone number first
-        user = await User.findOne({
-          where: { phoneNumber },
-          include: [
-            {
-              model: User,
-              as: "delegate",
-              attributes: ["id", "firstName", "lastName", "delegateCode"],
-            },
-            {
-              model: User,
-              as: "coordinator",
-              attributes: ["id", "firstName", "lastName", "coordinatorCode"],
-            },
-          ],
-        });
-      }
+      if (isAdminLogin) {
+        // Admin login: only allow email or ID number, no phone number
+        if (phoneNumber) {
+          throw new ApiError(
+            "Phone number login is not allowed for admin users. Please use email or ID number.",
+            "AUTH_002",
+            400
+          );
+        }
 
-      // If not found by phone number, try by ID number
-      if (!user && identifier) {
-        user = await User.findOne({
-          where: { idNumber: identifier },
-          include: [
-            {
-              model: User,
-              as: "delegate",
-              attributes: ["id", "firstName", "lastName", "delegateCode"],
-            },
-            {
-              model: User,
-              as: "coordinator",
-              attributes: ["id", "firstName", "lastName", "coordinatorCode"],
-            },
-          ],
+        // Determine if identifier is email or ID number
+        const isEmail = identifier && identifier.includes("@");
+
+        if (isEmail) {
+          // Search by email for admin users
+          logger.info("Admin login: searching by email", { email: identifier });
+
+          user = await User.findOne({
+            where: { email: identifier },
+            include: [
+              {
+                model: User,
+                as: "delegate",
+                attributes: ["id", "firstName", "lastName", "delegateCode"],
+              },
+              {
+                model: User,
+                as: "coordinator",
+                attributes: ["id", "firstName", "lastName", "coordinatorCode"],
+              },
+            ],
+          });
+        } else {
+          // Search by ID number for admin users
+          logger.info("Admin login: searching by ID number", {
+            idNumber: identifier,
+          });
+
+          user = await User.findOne({
+            where: { idNumber: identifier },
+            include: [
+              {
+                model: User,
+                as: "delegate",
+                attributes: ["id", "firstName", "lastName", "delegateCode"],
+              },
+              {
+                model: User,
+                as: "coordinator",
+                attributes: ["id", "firstName", "lastName", "coordinatorCode"],
+              },
+            ],
+          });
+        }
+
+        // For admin login, ensure user has admin role
+        if (user && !["admin", "superadmin"].includes(user.role)) {
+          securityLogger("NON_ADMIN_LOGIN_ATTEMPT", {
+            userId: user.id,
+            role: user.role,
+            loginIdentifier,
+            ipAddress,
+            userAgent,
+          });
+          throw new ApiError(
+            "Access denied. Admin privileges required.",
+            "AUTH_003",
+            403
+          );
+        }
+      } else {
+        // Regular user login: allow phone number or ID number
+        // Determine if the identifier is likely a phone number or ID number
+        const isLikelyPhoneNumber =
+          phoneNumber ||
+          (identifier &&
+            (identifier.length > 8 ||
+              identifier.includes("+") ||
+              identifier.includes("-") ||
+              identifier.includes(" ")));
+        const isLikelyIdNumber =
+          identifier && identifier.length === 8 && /^\d{8}$/.test(identifier);
+
+        logger.info("User search strategy", {
+          isLikelyPhoneNumber,
+          isLikelyIdNumber,
+          phoneNumber,
+          identifier,
         });
+
+        if (phoneNumber || isLikelyPhoneNumber) {
+          // Try to find by phone number first
+          const searchPhone = phoneNumber || identifier;
+          logger.info("Searching by phone number", { searchPhone });
+
+          user = await User.findOne({
+            where: { phoneNumber: searchPhone },
+            include: [
+              {
+                model: User,
+                as: "delegate",
+                attributes: ["id", "firstName", "lastName", "delegateCode"],
+              },
+              {
+                model: User,
+                as: "coordinator",
+                attributes: ["id", "firstName", "lastName", "coordinatorCode"],
+              },
+            ],
+          });
+
+          logger.info("Phone number search result", {
+            found: !!user,
+            userId: user?.id,
+          });
+        }
+
+        // If not found by phone number, try by ID number
+        if (!user && (identifier || isLikelyIdNumber)) {
+          const searchId = identifier;
+          logger.info("Searching by ID number", { searchId });
+
+          user = await User.findOne({
+            where: { idNumber: searchId },
+            include: [
+              {
+                model: User,
+                as: "delegate",
+                attributes: ["id", "firstName", "lastName", "delegateCode"],
+              },
+              {
+                model: User,
+                as: "coordinator",
+                attributes: ["id", "firstName", "lastName", "coordinatorCode"],
+              },
+            ],
+          });
+
+          logger.info("ID number search result", {
+            found: !!user,
+            userId: user?.id,
+          });
+        }
+
+        // If still not found, try a broader search
+        if (!user && identifier) {
+          // Try to find by either phone number or ID number
+          logger.info("Attempting broader search", { identifier });
+
+          user = await User.findOne({
+            where: {
+              [Op.or]: [{ phoneNumber: identifier }, { idNumber: identifier }],
+            },
+            include: [
+              {
+                model: User,
+                as: "delegate",
+                attributes: ["id", "firstName", "lastName", "delegateCode"],
+              },
+              {
+                model: User,
+                as: "coordinator",
+                attributes: ["id", "firstName", "lastName", "coordinatorCode"],
+              },
+            ],
+          });
+
+          logger.info("Broader search result", {
+            found: !!user,
+            userId: user?.id,
+          });
+        }
       }
 
       if (!user) {
         await this.recordFailedLogin(loginIdentifier, ipAddress, userAgent);
         throw new ApiError(
-          "Invalid Phone/ID number or Password",
+          isAdminLogin
+            ? "Invalid email/ID number or password"
+            : "Invalid Phone/ID number or Password",
           "AUTH_001",
           401
         );
@@ -143,7 +292,9 @@ export class AuthService {
       if (!isValidPassword) {
         await this.recordFailedLogin(loginIdentifier, ipAddress, userAgent);
         throw new ApiError(
-          "Invalid Phone/ID number or Password",
+          isAdminLogin
+            ? "Invalid email/ID number or password"
+            : "Invalid Phone/ID number or Password",
           "AUTH_001",
           401
         );
