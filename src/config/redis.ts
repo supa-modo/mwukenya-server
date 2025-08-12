@@ -2,9 +2,10 @@ import Redis from "ioredis";
 import { config } from "./index";
 import logger from "../utils/logger";
 
-// Redis configuration with support for REDIS_URL
+// Redis configuration with support for REDIS_URL and enhanced stability
 const getRedisConfig = () => {
   const baseConfig = {
+    // Connection settings
     retryDelayOnFailover: 100,
     maxRetriesPerRequest: 3,
     lazyConnect: true,
@@ -12,6 +13,17 @@ const getRedisConfig = () => {
     family: 4,
     connectTimeout: 10000,
     commandTimeout: 5000,
+
+    // Enhanced stability settings for production
+    retryDelayOnClusterDown: 300,
+    enableOfflineQueue: false,
+    maxLoadingTimeout: 10000,
+
+    // Connection pooling and health checks
+    keepAliveInitialDelay: 10000,
+
+    // Health check interval
+    healthCheckInterval: 30000,
   };
 
   // If REDIS_URL is provided, use it directly
@@ -36,9 +48,7 @@ const redis = process.env.REDIS_URL
   ? new Redis(process.env.REDIS_URL, getRedisConfig())
   : new Redis(getRedisConfig());
 
-export { redis };
-
-// Redis event handlers
+// Enhanced Redis event handlers with better error handling
 redis.on("connect", () => {
   logger.info("Redis client connected");
 });
@@ -47,17 +57,57 @@ redis.on("ready", () => {
   logger.info("Redis client ready");
 });
 
-redis.on("error", (error) => {
+redis.on("error", (error: any) => {
   logger.error("Redis client error:", error);
+
+  // Don't crash the application on Redis errors
+  // Just log them and continue
+  if (error.code === "ECONNREFUSED") {
+    logger.warn("Redis connection refused - service may be down");
+  } else if (error.code === "ETIMEDOUT") {
+    logger.warn("Redis connection timeout");
+  }
 });
 
 redis.on("close", () => {
   logger.info("Redis client connection closed");
 });
 
-redis.on("reconnecting", () => {
-  logger.info("Redis client reconnecting");
+redis.on("reconnecting", (delay: number) => {
+  logger.info(`Redis client reconnecting in ${delay}ms`);
 });
+
+redis.on("end", () => {
+  logger.info("Redis client connection ended");
+});
+
+// Health check function
+export const checkRedisHealth = async (): Promise<boolean> => {
+  try {
+    const startTime = Date.now();
+    await redis.ping();
+    const responseTime = Date.now() - startTime;
+
+    if (responseTime > 1000) {
+      logger.warn(`Redis response time slow: ${responseTime}ms`);
+    }
+
+    return true;
+  } catch (error) {
+    logger.error("Redis health check failed:", error);
+    return false;
+  }
+};
+
+// Periodic health check (every 30 seconds)
+if (process.env.NODE_ENV === "production") {
+  setInterval(async () => {
+    const isHealthy = await checkRedisHealth();
+    if (!isHealthy) {
+      logger.warn("Redis health check failed - connection may be unstable");
+    }
+  }, 30000);
+}
 
 // Test Redis connection
 export const testRedisConnection = async (): Promise<boolean> => {
@@ -70,6 +120,8 @@ export const testRedisConnection = async (): Promise<boolean> => {
     return false;
   }
 };
+
+export { redis };
 
 // Redis utility functions
 export const redisUtils = {
@@ -140,10 +192,75 @@ export const redisUtils = {
   },
 };
 
+// Redis connection manager for production environments
+export class RedisConnectionManager {
+  private static instance: RedisConnectionManager;
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 10;
+  private reconnectDelay = 1000;
+
+  static getInstance(): RedisConnectionManager {
+    if (!RedisConnectionManager.instance) {
+      RedisConnectionManager.instance = new RedisConnectionManager();
+    }
+    return RedisConnectionManager.instance;
+  }
+
+  async gracefulShutdown(): Promise<void> {
+    try {
+      logger.info("Starting graceful Redis shutdown...");
+
+      // Stop accepting new commands
+      redis.disconnect();
+
+      // Wait for pending commands to complete
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      logger.info("Redis graceful shutdown completed");
+    } catch (error) {
+      logger.error("Error during Redis graceful shutdown:", error);
+    }
+  }
+
+  async reconnect(): Promise<void> {
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      logger.error("Max Redis reconnection attempts reached");
+      return;
+    }
+
+    this.reconnectAttempts++;
+    logger.info(
+      `Attempting Redis reconnection ${this.reconnectAttempts}/${this.maxReconnectAttempts}`
+    );
+
+    try {
+      await redis.connect();
+      this.reconnectAttempts = 0;
+      logger.info("Redis reconnection successful");
+    } catch (error) {
+      logger.error("Redis reconnection failed:", error);
+
+      // Exponential backoff
+      const delay =
+        this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
+      setTimeout(() => this.reconnect(), delay);
+    }
+  }
+
+  getConnectionStatus(): string {
+    return redis.status;
+  }
+
+  isConnected(): boolean {
+    return redis.status === "ready";
+  }
+}
+
 // Close Redis connection
 export const closeRedisConnection = async (): Promise<void> => {
   try {
-    redis.disconnect();
+    const manager = RedisConnectionManager.getInstance();
+    await manager.gracefulShutdown();
     logger.info("Redis connection closed");
   } catch (error) {
     logger.error("Error closing Redis connection:", error);

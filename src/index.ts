@@ -201,9 +201,13 @@ const gracefulShutdown = async (signal: string): Promise<void> => {
   try {
     // Close database connections
     const { closeConnection } = await import("./config/database");
-    const { closeRedisConnection } = await import("./config/redis");
+    const { closeRedisConnection, RedisConnectionManager } = await import(
+      "./config/redis"
+    );
 
-    await Promise.all([closeConnection(), closeRedisConnection()]);
+    // Use Redis connection manager for graceful shutdown
+    const redisManager = RedisConnectionManager.getInstance();
+    await Promise.all([closeConnection(), redisManager.gracefulShutdown()]);
 
     logger.info("Database connections closed");
 

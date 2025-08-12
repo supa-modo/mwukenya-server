@@ -1,6 +1,7 @@
 import { Router } from "express";
 import authRoutes from "./auth";
 import userRoutes from "./users";
+import adminRoutes from "./admin";
 // Import other route modules as they are created
 // import medicalSchemeRoutes from './medicalSchemes';
 
@@ -18,6 +19,42 @@ router.get("/health", (req, res) => {
     },
     message: "Service is running",
   });
+});
+
+// Redis health check endpoint
+router.get("/health/redis", async (req, res) => {
+  try {
+    const { checkRedisHealth, RedisConnectionManager } = await import(
+      "../config/redis"
+    );
+
+    const isHealthy = await checkRedisHealth();
+    const redisManager = RedisConnectionManager.getInstance();
+    const connectionStatus = redisManager.getConnectionStatus();
+
+    res.status(200).json({
+      success: true,
+      data: {
+        redis: {
+          status: isHealthy ? "healthy" : "unhealthy",
+          connectionStatus,
+          isConnected: redisManager.isConnected(),
+          timestamp: new Date().toISOString(),
+        },
+      },
+      message: isHealthy ? "Redis is healthy" : "Redis health check failed",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: {
+        code: "REDIS_001",
+        message: "Failed to check Redis health",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 
 // System info endpoint (no sensitive data)
@@ -38,6 +75,7 @@ router.get("/info", (req, res) => {
 // Mount route modules
 router.use("/auth", authRoutes);
 router.use("/users", userRoutes);
+router.use("/admin", adminRoutes);
 // router.use('/medical-schemes', medicalSchemeRoutes);
 
 // 404 handler for API routes

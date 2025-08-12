@@ -149,12 +149,63 @@ class User
     });
   }
 
+  public static async generateUniqueMembershipNumber(
+    maxRetries: number = 5
+  ): Promise<string> {
+    for (let i = 0; i < maxRetries; i++) {
+      const membershipNumber = this.generateMembershipNumber();
+
+      // Check if it already exists
+      const existingUser = await this.findByMembershipNumber(membershipNumber);
+      if (!existingUser) {
+        if (i > 0) {
+          console.log(
+            `✅ Generated unique membership number after ${
+              i + 1
+            } attempts: ${membershipNumber}`
+          );
+        }
+        return membershipNumber;
+      }
+
+      if (i === 0) {
+        console.log(
+          `⚠️  Collision detected for membership number: ${membershipNumber}, retrying...`
+        );
+      }
+    }
+
+    console.log(
+      `🚨 Max retries (${maxRetries}) reached, using fallback generation method`
+    );
+    // If we hit max retries, use timestamp-based fallback
+    return this.generateFallbackMembershipNumber();
+  }
+
   public static generateMembershipNumber(): string {
-    const timestamp = Date.now().toString();
-    const random = Math.floor(Math.random() * 1000)
+    const date = new Date();
+    const year = date.getFullYear().toString().slice(-2); // Get last 2 digits of year
+
+    // Generate random letters (2 uppercase letters)
+    const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ"; // Removed I and O to avoid confusion
+    const letter1 = letters.charAt(Math.floor(Math.random() * letters.length));
+    const letter2 = letters.charAt(Math.floor(Math.random() * letters.length));
+
+    // Generate random numbers (4 digits)
+    const randomNum = Math.floor(1000 + Math.random() * 9000).toString();
+
+    // Combine: MWU-{year}{2 random letters}{random 4 numbers}
+    return `MWU-${year}${letter1}${letter2}${randomNum}`;
+  }
+
+  private static generateFallbackMembershipNumber(): string {
+    const date = new Date();
+    const year = date.getFullYear().toString().slice(-2);
+    const timestamp = Date.now().toString().slice(-4); // Last 4 digits of timestamp
+    const random = Math.floor(Math.random() * 100)
       .toString()
-      .padStart(3, "0");
-    return `MWU${timestamp.slice(-6)}${random}`;
+      .padStart(2, "0");
+    return `MWU-${year}${timestamp}${random}`;
   }
 
   public static generateDelegateCode(): string {
@@ -173,6 +224,33 @@ class User
       .toString()
       .padStart(2, "0");
     return `${prefix}${timestamp}${random}`;
+  }
+
+  public static formatPhoneNumber(phoneNumber: string): string {
+    if (!phoneNumber) return "";
+    // Remove all non-digit characters
+    const digits = phoneNumber.replace(/\D/g, "");
+    // Ensure it starts with +254 and has 12 digits (including +254)
+    if (digits.startsWith("254")) {
+      return `+${digits}`;
+    }
+    // If it starts with 07, add +254
+    if (digits.startsWith("07")) {
+      return `+254${digits.slice(1)}`;
+    }
+    // If it starts with 7, add +254
+    if (digits.startsWith("7")) {
+      return `+254${digits}`;
+    }
+    // If it starts with 0, add +254
+    if (digits.startsWith("0")) {
+      return `+254${digits.slice(1)}`;
+    }
+    // If it starts with +, ensure it's +254
+    if (digits.startsWith("+")) {
+      return `+254${digits.slice(1)}`;
+    }
+    return `+254${digits}`;
   }
 }
 
@@ -219,7 +297,7 @@ User.init(
       unique: true,
       validate: {
         notEmpty: true,
-        is: /^\+?[1-9]\d{1,14}$/, // E.164 format
+        is: /^\+254\d{9}$/, // Updated to accept +254XXXXXXXXX format
       },
     },
     idNumber: {
@@ -318,13 +396,11 @@ User.init(
     delegateCode: {
       type: DataTypes.STRING(20),
       allowNull: true,
-      unique: true,
       field: "delegate_code",
     },
     coordinatorCode: {
       type: DataTypes.STRING(20),
       allowNull: true,
-      unique: true,
       field: "coordinator_code",
     },
     lastLogin: {
@@ -402,12 +478,40 @@ User.init(
       {
         fields: ["coordinator_id"],
       },
+      {
+        unique: true,
+        fields: ["delegate_code"],
+        where: {
+          delegate_code: {
+            [Op.ne]: null,
+          },
+        },
+      },
+      {
+        unique: true,
+        fields: ["coordinator_code"],
+        where: {
+          coordinator_code: {
+            [Op.ne]: null,
+          },
+        },
+      },
     ],
     hooks: {
       beforeCreate: async (user: User) => {
+        // Hash password if provided
+        if (user.passwordHash) {
+          user.passwordHash = await User.hashPassword(user.passwordHash);
+        }
+
+        // Format phone number to +254XXXXXXXXX format
+        if (user.phoneNumber) {
+          user.phoneNumber = User.formatPhoneNumber(user.phoneNumber);
+        }
+
         // Generate membership number for members
         if (user.role === UserRole.MEMBER && !user.membershipNumber) {
-          user.membershipNumber = User.generateMembershipNumber();
+          user.membershipNumber = await User.generateUniqueMembershipNumber();
           user.membershipDate = new Date();
         }
 
@@ -421,7 +525,17 @@ User.init(
           user.coordinatorCode = User.generateCoordinatorCode();
         }
       },
-      beforeUpdate: (user: User) => {
+      beforeUpdate: async (user: User) => {
+        // Hash password if provided and changed
+        if (user.changed("passwordHash") && user.passwordHash) {
+          user.passwordHash = await User.hashPassword(user.passwordHash);
+        }
+
+        // Format phone number if changed
+        if (user.changed("phoneNumber") && user.phoneNumber) {
+          user.phoneNumber = User.formatPhoneNumber(user.phoneNumber);
+        }
+
         if (user.changed("role")) {
           // Update membership date when status changes to active
           if (
