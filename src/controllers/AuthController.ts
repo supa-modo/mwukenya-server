@@ -109,15 +109,22 @@ const registerSchema = Joi.object({
       "string.pattern.base": "Phone number must be in valid E.164 format",
       "any.required": "Phone number is required",
     }),
-  idNumber: Joi.string().min(6).max(20).alphanum().required().messages({
-    "string.min": "ID number must be at least 6 characters long",
-    "string.max": "ID number cannot exceed 20 characters",
-    "string.alphanum": "ID number should only contain letters and numbers",
-    "any.required": "ID number is required",
-  }),
-  password: Joi.string().min(8).required().messages({
-    "string.min": "Password must be at least 8 characters long",
+  idNumber: Joi.string()
+    .length(8)
+    .pattern(/^\d{8}$/)
+    .required()
+    .messages({
+      "string.length": "ID number must be exactly 8 digits",
+      "string.pattern.base": "ID number should only contain numbers",
+      "any.required": "ID number is required",
+    }),
+  password: Joi.string().min(6).required().messages({
+    "string.min": "Password must be at least 6 characters long",
     "any.required": "Password is required",
+  }),
+  confirmPassword: Joi.string().required().valid(Joi.ref("password")).messages({
+    "any.only": "Passwords do not match",
+    "any.required": "Password confirmation is required",
   }),
   gender: Joi.string().valid("Male", "Female").optional().messages({
     "any.only": "Gender must be either Male or Female",
@@ -190,8 +197,8 @@ const forgotPasswordSchema = Joi.object({
 });
 
 const resetPasswordWithTokenSchema = Joi.object({
-  password: Joi.string().min(8).required().messages({
-    "string.min": "Password must be at least 8 characters long",
+  password: Joi.string().min(6).required().messages({
+    "string.min": "Password must be at least 6 characters long",
     "any.required": "Password is required",
   }),
 });
@@ -213,8 +220,8 @@ const resetPasswordWithCodeSchema = Joi.object({
       "string.pattern.base": "Reset code must contain only numbers",
       "any.required": "Reset code is required",
     }),
-  newPassword: Joi.string().min(8).required().messages({
-    "string.min": "Password must be at least 8 characters long",
+  newPassword: Joi.string().min(6).required().messages({
+    "string.min": "Password must be at least 6 characters long",
     "any.required": "New password is required",
   }),
 });

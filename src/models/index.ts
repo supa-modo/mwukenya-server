@@ -1,6 +1,7 @@
 import sequelize from "../config/database";
 import User from "./User";
 import MedicalScheme from "./MedicalScheme";
+import Document from "./Document";
 
 // Import other models as they are created
 // import MemberSubscription from './MemberSubscription';
@@ -34,6 +35,24 @@ const setupAssociations = (): void => {
     constraints: false,
   });
 
+  // Document associations
+  User.hasMany(Document, {
+    as: "documents",
+    foreignKey: "userId",
+    onDelete: "CASCADE",
+  });
+
+  Document.belongsTo(User, {
+    as: "user",
+    foreignKey: "userId",
+  });
+
+  Document.belongsTo(User, {
+    as: "verifier",
+    foreignKey: "verifiedBy",
+    constraints: false,
+  });
+
   // Additional associations will be added as models are created
   // Example:
   // User.hasMany(MemberSubscription, {
@@ -55,6 +74,7 @@ export {
   sequelize,
   User,
   MedicalScheme,
+  Document,
   // Export other models as they are created
 };
 
@@ -97,5 +117,6 @@ export default {
   sequelize,
   User,
   MedicalScheme,
+  Document,
   initializeDatabase,
 };

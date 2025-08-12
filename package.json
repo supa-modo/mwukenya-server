@@ -15,9 +15,7 @@
     "db:seed": "ts-node -r tsconfig-paths/register src/seeders/index.ts",
     "db:seed:users": "ts-node -r tsconfig-paths/register src/seeders/userSeeder.ts",
     "db:seed:schemes": "ts-node -r tsconfig-paths/register src/seeders/medicalSchemeSeeder.ts",
-    "db:update-constraints": "node scripts/update-constraints.js",
     "db:reset": "npx sequelize-cli db:migrate:undo all && npm run db:migrate && npm run db:seed",
-    "test:collision": "node scripts/test-collision-detection.js",
     "logs:clear": "rm -rf logs/*",
     "typecheck": "tsc --noEmit"
   },
@@ -32,11 +30,13 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@types/aws-sdk": "^0.0.42",
     "@types/axios": "^0.9.36",
     "@types/compression": "^1.7.5",
     "@types/morgan": "^1.9.9",
     "@types/uuid": "^10.0.0",
     "africastalking": "^0.7.3",
+    "aws-sdk": "^2.1692.0",
     "axios": "^1.8.4",
     "bcrypt": "^5.1.1",
     "compression": "^1.8.0",

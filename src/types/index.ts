@@ -1,3 +1,5 @@
+import { Request } from "express";
+
 // Re-export all types from the models types file
 export * from "../models/types";
 
@@ -10,6 +12,7 @@ export interface RequestUser {
 
 export interface AuthenticatedRequest extends Request {
   user?: RequestUser;
+  file?: Express.Multer.File;
 }
 
 export interface ApiResponse<T = any> {

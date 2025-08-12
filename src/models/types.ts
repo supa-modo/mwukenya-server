@@ -69,6 +69,20 @@ export enum NotificationStatus {
   DELIVERED = "delivered",
 }
 
+export enum DocumentType {
+  IDENTITY = "identity",
+  MEDICAL = "medical",
+  INSURANCE = "insurance",
+  RECEIPT = "receipt",
+  OTHER = "other",
+}
+
+export enum DocumentStatus {
+  PENDING = "pending",
+  VERIFIED = "verified",
+  REJECTED = "rejected",
+}
+
 export enum UssdSessionStatus {
   ACTIVE = "active",
   COMPLETED = "completed",
@@ -514,4 +528,34 @@ export interface RegistrationData
   extends Omit<UserCreationAttributes, "passwordHash"> {
   password: string;
   confirmPassword: string;
+}
+
+// Document-related interfaces
+export interface DocumentAttributes {
+  id: string;
+  userId: string;
+  name: string;
+  type: DocumentType;
+  description?: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  s3Key: string;
+  s3Bucket: string;
+  url?: string;
+  status: DocumentStatus;
+  uploadedAt: Date;
+  verifiedAt?: Date;
+  verifiedBy?: string;
+  rejectionReason?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DocumentCreationAttributes
+  extends Omit<
+    DocumentAttributes,
+    "id" | "createdAt" | "updatedAt" | "uploadedAt"
+  > {
+  id?: string;
 }

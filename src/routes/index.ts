@@ -2,6 +2,7 @@ import { Router } from "express";
 import authRoutes from "./auth";
 import userRoutes from "./users";
 import adminRoutes from "./admin";
+import documentRoutes from "./documents";
 // Import other route modules as they are created
 // import medicalSchemeRoutes from './medicalSchemes';
 
@@ -76,6 +77,7 @@ router.get("/info", (req, res) => {
 router.use("/auth", authRoutes);
 router.use("/users", userRoutes);
 router.use("/admin", adminRoutes);
+router.use("/documents", documentRoutes);
 // router.use('/medical-schemes', medicalSchemeRoutes);
 
 // 404 handler for API routes
