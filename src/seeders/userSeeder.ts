@@ -15,8 +15,6 @@ export async function seedUsers(transaction?: Transaction) {
     }
 
     console.log("🌱 Seeding users...");
-
-    // Default password for all users (will be hashed by model hooks)
     const defaultPassword = "Password123!";
 
     // 1. Create Super Admin

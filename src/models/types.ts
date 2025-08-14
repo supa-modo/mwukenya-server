@@ -143,7 +143,8 @@ export interface MedicalSchemeAttributes {
   shaPortion: number;
   delegateCommission: number;
   coordinatorCommission: number;
-  benefits?: Record<string, any>;
+  benefits?: string[];
+  limitations?: string[];
   isActive: boolean;
   shaSchemeId?: string;
   createdAt: Date;
@@ -162,6 +163,7 @@ export interface MemberSubscriptionAttributes {
   subscriptionDate: Date;
   status: SubscriptionStatus;
   effectiveDate: Date;
+  endDate?: Date;
   registrationDelegateId?: string;
   registrationCoordinatorId?: string;
   shaMemberNumber?: string;

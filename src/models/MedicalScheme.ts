@@ -19,7 +19,8 @@ class MedicalScheme
   public shaPortion!: number;
   public delegateCommission!: number;
   public coordinatorCommission!: number;
-  public benefits?: Record<string, any>;
+  public benefits?: string[];
+  public limitations?: string[];
   public isActive!: boolean;
   public shaSchemeId?: string;
   public createdAt!: Date;
@@ -33,6 +34,38 @@ class MedicalScheme
       this.delegateCommission -
       this.coordinatorCommission
     );
+  }
+
+  public get monthlyPremium(): number {
+    return this.dailyPremium * 30;
+  }
+
+  public get annualPremium(): number {
+    return this.dailyPremium * 365;
+  }
+
+  public get maxDependents(): number {
+    const coverageMap: Record<string, number> = {
+      M: 0,
+      "M+1": 1,
+      "M+2": 2,
+      "M+3": 3,
+      "M+4": 4,
+      "M+5": 5,
+    };
+    return coverageMap[this.coverageType] || 0;
+  }
+
+  public get coverageDescription(): string {
+    const descriptions: Record<string, string> = {
+      M: "Individual coverage for member only",
+      "M+1": "Member plus one dependent (spouse)",
+      "M+2": "Member plus spouse and one child",
+      "M+3": "Member plus spouse and two children",
+      "M+4": "Member plus spouse and three children",
+      "M+5": "Member plus spouse and four children",
+    };
+    return descriptions[this.coverageType] || "Unknown coverage type";
   }
 
   // Instance methods
@@ -60,6 +93,33 @@ class MedicalScheme
     return Math.floor(amount / this.dailyPremium);
   }
 
+  public getMinimumPayment(): number {
+    return this.dailyPremium;
+  }
+
+  public calculateCoveragePeriod(
+    amount: number,
+    startDate: Date
+  ): {
+    startDate: Date;
+    endDate: Date;
+    daysCovered: number;
+  } {
+    const daysCovered = this.getDaysCovered(amount);
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + daysCovered - 1);
+
+    return {
+      startDate,
+      endDate,
+      daysCovered,
+    };
+  }
+
+  public isEligibleForDependents(): boolean {
+    return this.maxDependents > 0;
+  }
+
   // Static methods
   public static async findByCode(code: string): Promise<MedicalScheme | null> {
     return this.findOne({ where: { code, isActive: true } });
@@ -68,7 +128,10 @@ class MedicalScheme
   public static async findActiveSchemes(): Promise<MedicalScheme[]> {
     return this.findAll({
       where: { isActive: true },
-      order: [["coverageType", "ASC"]],
+      order: [
+        ["coverageType", "ASC"],
+        ["dailyPremium", "ASC"],
+      ],
     });
   }
 
@@ -79,6 +142,82 @@ class MedicalScheme
       where: { coverageType, isActive: true },
       order: [["dailyPremium", "ASC"]],
     });
+  }
+
+  public static async findWithSubscriberCount(): Promise<any[]> {
+    return this.findAll({
+      where: { isActive: true },
+      attributes: [
+        "id",
+        "name",
+        "code",
+        "description",
+        "coverageType",
+        "dailyPremium",
+        "shaPortion",
+        "delegateCommission",
+        "coordinatorCommission",
+        "benefits",
+        "isActive",
+        [
+          sequelize.fn("COUNT", sequelize.col("memberSubscriptions.id")),
+          "subscriberCount",
+        ],
+      ],
+      include: [
+        {
+          model: sequelize.models.MemberSubscription,
+          as: "memberSubscriptions",
+          attributes: [],
+          where: { status: "active" },
+          required: false,
+        },
+      ],
+      group: ["MedicalScheme.id"],
+      order: [
+        ["coverageType", "ASC"],
+        ["dailyPremium", "ASC"],
+      ],
+    });
+  }
+
+  public static getCoverageTypeOptions(): Array<{
+    value: CoverageType;
+    label: string;
+    description: string;
+  }> {
+    return [
+      {
+        value: CoverageType.M,
+        label: "Individual (M)",
+        description: "Member only coverage",
+      },
+      {
+        value: CoverageType.M_PLUS_1,
+        label: "M+1",
+        description: "Member plus one dependent",
+      },
+      {
+        value: CoverageType.M_PLUS_2,
+        label: "M+2",
+        description: "Member plus two dependents",
+      },
+      {
+        value: CoverageType.M_PLUS_3,
+        label: "M+3",
+        description: "Member plus three dependents",
+      },
+      {
+        value: CoverageType.M_PLUS_4,
+        label: "M+4",
+        description: "Member plus four dependents",
+      },
+      {
+        value: CoverageType.M_PLUS_5,
+        label: "M+5",
+        description: "Member plus five dependents",
+      },
+    ];
   }
 }
 
@@ -156,7 +295,12 @@ MedicalScheme.init(
     benefits: {
       type: DataTypes.JSONB,
       allowNull: true,
-      defaultValue: {},
+      defaultValue: [],
+    },
+    limitations: {
+      type: DataTypes.JSONB,
+      allowNull: true,
+      defaultValue: [],
     },
     isActive: {
       type: DataTypes.BOOLEAN,

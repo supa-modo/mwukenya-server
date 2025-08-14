@@ -499,11 +499,6 @@ User.init(
     ],
     hooks: {
       beforeCreate: async (user: User) => {
-        // Hash password if provided
-        if (user.passwordHash) {
-          user.passwordHash = await User.hashPassword(user.passwordHash);
-        }
-
         // Format phone number to +254XXXXXXXXX format
         if (user.phoneNumber) {
           user.phoneNumber = User.formatPhoneNumber(user.phoneNumber);
@@ -526,11 +521,6 @@ User.init(
         }
       },
       beforeUpdate: async (user: User) => {
-        // Hash password if provided and changed
-        if (user.changed("passwordHash") && user.passwordHash) {
-          user.passwordHash = await User.hashPassword(user.passwordHash);
-        }
-
         // Format phone number if changed
         if (user.changed("phoneNumber") && user.phoneNumber) {
           user.phoneNumber = User.formatPhoneNumber(user.phoneNumber);

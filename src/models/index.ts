@@ -2,9 +2,9 @@ import sequelize from "../config/database";
 import User from "./User";
 import MedicalScheme from "./MedicalScheme";
 import Document from "./Document";
+import MemberSubscription from "./MemberSubscription";
 
 // Import other models as they are created
-// import MemberSubscription from './MemberSubscription';
 // import Payment from './Payment';
 // import PaymentCoverage from './PaymentCoverage';
 
@@ -53,17 +53,40 @@ const setupAssociations = (): void => {
     constraints: false,
   });
 
-  // Additional associations will be added as models are created
-  // Example:
-  // User.hasMany(MemberSubscription, {
-  //   as: 'subscriptions',
-  //   foreignKey: 'userId',
-  // });
+  // MemberSubscription associations
+  User.hasMany(MemberSubscription, {
+    as: 'subscriptions',
+    foreignKey: 'userId',
+    onDelete: 'CASCADE',
+  });
 
-  // MedicalScheme.hasMany(MemberSubscription, {
-  //   as: 'subscriptions',
-  //   foreignKey: 'schemeId',
-  // });
+  MemberSubscription.belongsTo(User, {
+    as: 'user',
+    foreignKey: 'userId',
+  });
+
+  MedicalScheme.hasMany(MemberSubscription, {
+    as: 'memberSubscriptions',
+    foreignKey: 'schemeId',
+  });
+
+  MemberSubscription.belongsTo(MedicalScheme, {
+    as: 'scheme',
+    foreignKey: 'schemeId',
+  });
+
+  // Registration delegate and coordinator associations
+  MemberSubscription.belongsTo(User, {
+    as: 'registrationDelegate',
+    foreignKey: 'registrationDelegateId',
+    constraints: false,
+  });
+
+  MemberSubscription.belongsTo(User, {
+    as: 'registrationCoordinator',
+    foreignKey: 'registrationCoordinatorId',
+    constraints: false,
+  });
 };
 
 // Setup associations
@@ -75,6 +98,7 @@ export {
   User,
   MedicalScheme,
   Document,
+  MemberSubscription,
   // Export other models as they are created
 };
 
@@ -118,5 +142,6 @@ export default {
   User,
   MedicalScheme,
   Document,
+  MemberSubscription,
   initializeDatabase,
 };
