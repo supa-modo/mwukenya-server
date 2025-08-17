@@ -45,6 +45,17 @@ router.get(
 );
 
 /**
+ * @route GET /api/users/delegates/:delegateId/members
+ * @desc Get members under a specific delegate (for coordinators)
+ * @access Coordinator only
+ */
+router.get(
+  "/delegates/:delegateId/members",
+  authorize([UserRole.COORDINATOR]),
+  UserController.getMembersByDelegate
+);
+
+/**
  * @route POST /api/users/create-member
  * @desc Create a new member under current delegate
  * @access Delegate only

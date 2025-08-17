@@ -687,6 +687,117 @@ export class UserController {
   }
 
   /**
+   * Get members under a specific delegate (for coordinators)
+   */
+  public static async getMembersByDelegate(
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> {
+    try {
+      const coordinatorId = req.user?.id;
+      const { delegateId } = req.params;
+      const { page = 1, limit = 10, search = "" } = req.query;
+
+      if (!coordinatorId) {
+        throw new ApiError("User not authenticated", "AUTH_001", 401);
+      }
+
+      if (!delegateId) {
+        throw new ApiError("Delegate ID is required", "VAL_001", 400);
+      }
+
+      // First, verify that the delegate belongs to this coordinator
+      const delegate = await User.findOne({
+        where: {
+          id: delegateId,
+          coordinatorId,
+          role: UserRole.DELEGATE,
+          isActive: true, // Ensure delegate is active
+        },
+      });
+
+      if (!delegate) {
+        throw new ApiError(
+          "Delegate not found, not assigned to you, or is inactive",
+          "USER_001",
+          404
+        );
+      }
+
+      // Build search conditions for members
+      const whereConditions: any = {
+        delegateId,
+        role: UserRole.MEMBER,
+        isActive: true, // Only return active members
+      };
+
+      if (search) {
+        whereConditions[Op.or] = [
+          { firstName: { [Op.iLike]: `%${search}%` } },
+          { lastName: { [Op.iLike]: `%${search}%` } },
+          { phoneNumber: { [Op.iLike]: `%${search}%` } },
+          { membershipNumber: { [Op.iLike]: `%${search}%` } },
+        ];
+      }
+
+      const offset = (Number(page) - 1) * Number(limit);
+
+      const { count, rows: members } = await User.findAndCountAll({
+        where: whereConditions,
+        attributes: {
+          exclude: [
+            "passwordHash",
+            "refreshToken",
+            "passwordResetToken",
+            "passwordResetExpires",
+          ],
+        },
+        order: [["createdAt", "DESC"]],
+        limit: Number(limit),
+        offset,
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          members,
+          pagination: {
+            total: count,
+            page: Number(page),
+            limit: Number(limit),
+            pages: Math.ceil(count / Number(limit)),
+          },
+        },
+        message: "Members retrieved successfully",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      logger.error("Error getting members by delegate:", error);
+
+      if (error instanceof ApiError) {
+        res.status(error.statusCode).json({
+          success: false,
+          error: {
+            code: error.code,
+            message: error.message,
+          },
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        error: {
+          code: "SYS_001",
+          message: "Internal server error",
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  /**
    * Create a new delegate under current coordinator
    */
   public static async createDelegate(
@@ -1127,6 +1238,19 @@ export class UserController {
         },
       });
 
+      // Get member counts for each delegate
+      const delegatesWithStats = await Promise.all(
+        delegates.map(async (delegate) => {
+          const memberCount = await User.count({
+            where: {
+              delegateId: delegate.id,
+              role: UserRole.MEMBER,
+            },
+          });
+          return { id: delegate.id, memberCount };
+        })
+      );
+
       res.status(200).json({
         success: true,
         data: {
@@ -1137,6 +1261,7 @@ export class UserController {
           activeMembers,
           inactiveMembers: totalMembers - activeMembers,
           newMembersThisMonth,
+          delegatesWithStats,
           // TODO: Add payment-related stats when payment system is implemented
           totalRevenue: 0,
           todaysRevenue: 0,
