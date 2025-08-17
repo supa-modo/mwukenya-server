@@ -97,6 +97,8 @@ class DocumentController {
       // Create document record in database
       const document = await Document.create({
         userId,
+        entityType: "user", // Documents uploaded by users are for users
+        entityId: userId, // The entity ID is the same as the user ID
         name,
         type: type as DocumentType,
         description,

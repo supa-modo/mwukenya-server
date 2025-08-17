@@ -2,6 +2,7 @@ import { Transaction } from "sequelize";
 import { User } from "../models";
 import { UserRole, MembershipStatus, Gender } from "../models/types";
 import sequelize from "../config/database";
+import bcrypt from "bcrypt";
 
 export async function seedUsers(transaction?: Transaction) {
   const t = transaction || (await sequelize.transaction());
@@ -15,6 +16,8 @@ export async function seedUsers(transaction?: Transaction) {
     }
 
     console.log("🌱 Seeding users...");
+    //hash the password
+    const hashedPassword = await bcrypt.hash("Password123!", 10);
     const defaultPassword = "Password123!";
 
     // 1. Create Super Admin
@@ -25,7 +28,7 @@ export async function seedUsers(transaction?: Transaction) {
         email: "eddie.oodhiambo@gmail.com",
         phoneNumber: "+254790193402",
         idNumber: "38353477",
-        passwordHash: defaultPassword,
+        passwordHash: hashedPassword,
         gender: Gender.MALE,
         county: "Nairobi",
         membershipStatus: MembershipStatus.ACTIVE,
@@ -51,7 +54,7 @@ export async function seedUsers(transaction?: Transaction) {
         email: "system@mwukenya.co.ke",
         phoneNumber: "+254700000002",
         idNumber: "12345679",
-        passwordHash: defaultPassword,
+        passwordHash: hashedPassword,
         gender: Gender.MALE,
         county: "Nairobi",
         membershipStatus: MembershipStatus.ACTIVE,
@@ -76,7 +79,7 @@ export async function seedUsers(transaction?: Transaction) {
           email: "eddieodhiambo11@gmail.com",
           phoneNumber: "+254700000003",
           idNumber: "11111111",
-          passwordHash: defaultPassword,
+          passwordHash: hashedPassword,
           gender: Gender.MALE,
           county: "Mombasa",
           membershipStatus: MembershipStatus.ACTIVE,
@@ -94,7 +97,7 @@ export async function seedUsers(transaction?: Transaction) {
           email: "coordinator2@mwukenya.co.ke",
           phoneNumber: "+254700000004",
           idNumber: "12345681",
-          passwordHash: defaultPassword,
+          passwordHash: hashedPassword,
           gender: Gender.FEMALE,
           county: "Kisumu",
           membershipStatus: MembershipStatus.ACTIVE,
@@ -121,7 +124,7 @@ export async function seedUsers(transaction?: Transaction) {
           email: "delegate1@mwukenya.co.ke",
           phoneNumber: "+254700000005",
           idNumber: "12345682",
-          passwordHash: defaultPassword,
+          passwordHash: hashedPassword,
           gender: Gender.MALE,
           county: "Mombasa",
           sacco: "Mombasa Sacco",
@@ -142,7 +145,7 @@ export async function seedUsers(transaction?: Transaction) {
           email: "delegate2@mwukenya.co.ke",
           phoneNumber: "+254700000006",
           idNumber: "12345683",
-          passwordHash: defaultPassword,
+          passwordHash: hashedPassword,
           gender: Gender.FEMALE,
           county: "Mombasa",
           sacco: "Mombasa Sacco",
@@ -163,7 +166,7 @@ export async function seedUsers(transaction?: Transaction) {
           email: "delegate3@mwukenya.co.ke",
           phoneNumber: "+254700000007",
           idNumber: "12345684",
-          passwordHash: defaultPassword,
+          passwordHash: hashedPassword,
           gender: Gender.MALE,
           county: "Kisumu",
           sacco: "Kisumu Sacco",
@@ -193,7 +196,7 @@ export async function seedUsers(transaction?: Transaction) {
           email: "member1@example.com",
           phoneNumber: "+254700000008",
           idNumber: "12345685",
-          passwordHash: defaultPassword,
+          passwordHash: hashedPassword,
           gender: Gender.FEMALE,
           county: "Mombasa",
           sacco: "Mombasa Sacco",
@@ -215,7 +218,7 @@ export async function seedUsers(transaction?: Transaction) {
           email: "member2@example.com",
           phoneNumber: "+254700000009",
           idNumber: "12345686",
-          passwordHash: defaultPassword,
+          passwordHash: hashedPassword,
           gender: Gender.MALE,
           county: "Mombasa",
           sacco: "Mombasa Sacco",
@@ -237,7 +240,7 @@ export async function seedUsers(transaction?: Transaction) {
           email: "member3@example.com",
           phoneNumber: "+254700000010",
           idNumber: "12345687",
-          passwordHash: defaultPassword,
+          passwordHash: hashedPassword,
           gender: Gender.FEMALE,
           county: "Mombasa",
           sacco: "Mombasa Sacco",
@@ -259,7 +262,7 @@ export async function seedUsers(transaction?: Transaction) {
           email: "member4@example.com",
           phoneNumber: "+254700000011",
           idNumber: "12345688",
-          passwordHash: defaultPassword,
+          passwordHash: hashedPassword,
           gender: Gender.MALE,
           county: "Kisumu",
           sacco: "Kisumu Sacco",
@@ -281,7 +284,7 @@ export async function seedUsers(transaction?: Transaction) {
           email: "member5@example.com",
           phoneNumber: "+254700000012",
           idNumber: "12345689",
-          passwordHash: defaultPassword,
+          passwordHash: hashedPassword,
           gender: Gender.FEMALE,
           county: "Kisumu",
           sacco: "Kisumu Sacco",
@@ -312,7 +315,7 @@ export async function seedUsers(transaction?: Transaction) {
           email: "pending1@example.com",
           phoneNumber: "+254700000013",
           idNumber: "12345690",
-          passwordHash: defaultPassword,
+          passwordHash: hashedPassword,
           gender: Gender.MALE,
           county: "Nairobi",
           sacco: "Nairobi Sacco",
@@ -331,7 +334,7 @@ export async function seedUsers(transaction?: Transaction) {
           email: "pending2@example.com",
           phoneNumber: "+254700000014",
           idNumber: "12345691",
-          passwordHash: defaultPassword,
+          passwordHash: hashedPassword,
           gender: Gender.FEMALE,
           county: "Nakuru",
           sacco: "Nakuru Sacco",

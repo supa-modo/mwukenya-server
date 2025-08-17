@@ -3,6 +3,7 @@ import User from "./User";
 import MedicalScheme from "./MedicalScheme";
 import Document from "./Document";
 import MemberSubscription from "./MemberSubscription";
+import Dependant from "./Dependant";
 
 // Import other models as they are created
 // import Payment from './Payment';
@@ -53,38 +54,66 @@ const setupAssociations = (): void => {
     constraints: false,
   });
 
+  // Dependant associations
+  User.hasMany(Dependant, {
+    as: "dependants",
+    foreignKey: "userId",
+    onDelete: "CASCADE",
+  });
+
+  Dependant.belongsTo(User, {
+    as: "user",
+    foreignKey: "userId",
+  });
+
+  Dependant.belongsTo(User, {
+    as: "verifier",
+    foreignKey: "verifiedBy",
+    constraints: false,
+  });
+
+  // Document associations for dependants (polymorphic)
+  Dependant.hasMany(Document, {
+    as: "documents",
+    foreignKey: "entityId",
+    scope: {
+      entityType: "dependant",
+    },
+    onDelete: "CASCADE",
+  });
+
   // MemberSubscription associations
   User.hasMany(MemberSubscription, {
-    as: 'subscriptions',
-    foreignKey: 'userId',
-    onDelete: 'CASCADE',
+    as: "subscriptions",
+    foreignKey: "userId",
+    onDelete: "CASCADE",
   });
 
   MemberSubscription.belongsTo(User, {
-    as: 'user',
-    foreignKey: 'userId',
+    as: "user",
+    foreignKey: "userId",
   });
 
   MedicalScheme.hasMany(MemberSubscription, {
-    as: 'memberSubscriptions',
-    foreignKey: 'schemeId',
+    as: "memberSubscriptions",
+    foreignKey: "schemeId",
   });
 
   MemberSubscription.belongsTo(MedicalScheme, {
-    as: 'scheme',
-    foreignKey: 'schemeId',
+    as: "scheme",
+    foreignKey: "schemeId",
   });
 
   // Registration delegate and coordinator associations
   MemberSubscription.belongsTo(User, {
-    as: 'registrationDelegate',
-    foreignKey: 'registrationDelegateId',
+    as: "registrationDelegate",
+    foreignKey: "registrationDelegateId",
     constraints: false,
   });
 
   MemberSubscription.belongsTo(User, {
-    as: 'registrationCoordinator',
-    foreignKey: 'registrationCoordinatorId',
+    as: "registrationCoordinator",
+    foreignKey: "registrationCoordinatorId",
     constraints: false,
   });
 };

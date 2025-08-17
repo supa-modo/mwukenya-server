@@ -5,6 +5,7 @@ import adminRoutes from "./admin";
 import documentRoutes from "./documents";
 import medicalSchemeRoutes from "./medicalSchemes";
 import subscriptionRoutes from "./subscriptions";
+import dependantRoutes from "./dependants";
 
 const router = Router();
 
@@ -80,6 +81,7 @@ router.use("/admin", adminRoutes);
 router.use("/documents", documentRoutes);
 router.use("/medical-schemes", medicalSchemeRoutes);
 router.use("/subscriptions", subscriptionRoutes);
+router.use("/dependants", dependantRoutes);
 
 // 404 handler for API routes
 router.use("*", (req, res) => {

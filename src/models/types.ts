@@ -83,6 +83,20 @@ export enum DocumentStatus {
   REJECTED = "rejected",
 }
 
+export enum DependantStatus {
+  ACTIVE = "active",
+  INACTIVE = "inactive",
+  SUSPENDED = "suspended",
+}
+
+export enum DependantRelationship {
+  SPOUSE = "spouse",
+  CHILD = "child",
+  PARENT = "parent",
+  SIBLING = "sibling",
+  OTHER = "other",
+}
+
 export enum UssdSessionStatus {
   ACTIVE = "active",
   COMPLETED = "completed",
@@ -536,6 +550,8 @@ export interface RegistrationData
 export interface DocumentAttributes {
   id: string;
   userId: string;
+  entityType: "user" | "dependant"; // Polymorphic relationship
+  entityId: string; // Can be userId or dependantId
   name: string;
   type: DocumentType;
   description?: string;
@@ -560,4 +576,42 @@ export interface DocumentCreationAttributes
     "id" | "createdAt" | "updatedAt" | "uploadedAt"
   > {
   id?: string;
+}
+
+// Dependant-related interfaces
+export interface DependantAttributes {
+  id: string;
+  userId: string;
+  firstName: string;
+  lastName: string;
+  otherNames?: string;
+  relationship: DependantRelationship;
+  dateOfBirth: Date;
+  gender: Gender;
+  idNumber?: string;
+  notes?: string;
+  status: DependantStatus;
+  isVerified: boolean;
+  verifiedBy?: string;
+  verifiedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+
+  // Virtual fields
+  age?: number;
+  fullName?: string;
+
+  // Associations
+  user?: UserAttributes;
+  verifier?: UserAttributes;
+  documents?: DocumentAttributes[];
+}
+
+export interface DependantCreationAttributes
+  extends Omit<
+    DependantAttributes,
+    "id" | "createdAt" | "updatedAt" | "isVerified" | "status"
+  > {
+  id?: string;
+  status?: DependantStatus;
 }

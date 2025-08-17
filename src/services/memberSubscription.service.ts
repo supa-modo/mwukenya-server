@@ -30,9 +30,7 @@ export class MemberSubscriptionService {
       const subscription = await MemberSubscription.findOne({
         where: {
           userId,
-          status: {
-            [Op.in]: ["active", "pending"],
-          },
+          status: "active",
         },
         include: [
           {
@@ -402,7 +400,7 @@ export class MemberSubscriptionService {
   async getSubscriptionStats(): Promise<{
     totalSubscriptions: number;
     activeSubscriptions: number;
-    pendingSubscriptions: number;
+    suspendedSubscriptions: number;
     cancelledSubscriptions: number;
     subscriptionsByScheme: Array<{
       schemeId: string;
@@ -414,19 +412,19 @@ export class MemberSubscriptionService {
       const [
         totalSubscriptions,
         activeSubscriptions,
-        pendingSubscriptions,
+        suspendedSubscriptions,
         cancelledSubscriptions,
       ] = await Promise.all([
         MemberSubscription.count(),
         MemberSubscription.count({ where: { status: "active" } }),
-        MemberSubscription.count({ where: { status: "pending" } }),
+        MemberSubscription.count({ where: { status: "suspended" } }),
         MemberSubscription.count({ where: { status: "cancelled" } }),
       ]);
 
       // Get subscriptions by scheme
       const subscriptionsByScheme = await MemberSubscription.findAll({
         attributes: [
-          "medicalSchemeId",
+          "schemeId",
           [
             MemberSubscription.sequelize!.fn(
               "COUNT",
@@ -442,12 +440,12 @@ export class MemberSubscriptionService {
             attributes: ["name"],
           },
         ],
-        group: ["medicalSchemeId", "scheme.id", "scheme.name"],
+        group: ["schemeId", "scheme.id", "scheme.name"],
         raw: false,
       });
 
       const formattedSchemeStats = subscriptionsByScheme.map((item: any) => ({
-        schemeId: item.medicalSchemeId,
+        schemeId: item.schemeId,
         schemeName: item.scheme?.name || "Unknown",
         count: parseInt(item.dataValues.count),
       }));
@@ -455,7 +453,7 @@ export class MemberSubscriptionService {
       return {
         totalSubscriptions,
         activeSubscriptions,
-        pendingSubscriptions,
+        suspendedSubscriptions,
         cancelledSubscriptions,
         subscriptionsByScheme: formattedSchemeStats,
       };

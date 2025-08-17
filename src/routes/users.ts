@@ -45,6 +45,12 @@ router.get(
 );
 
 /**
+ * @route POST /api/users/create-member
+ * @desc Create a new member under current delegate
+ * @access Delegate only
+ */
+
+/**
  * @route POST /api/users/create-delegate
  * @desc Create a new delegate under current coordinator
  * @access Coordinator only

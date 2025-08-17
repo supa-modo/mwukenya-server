@@ -14,6 +14,8 @@ class Document
 {
   public id!: string;
   public userId!: string;
+  public entityType!: "user" | "dependant";
+  public entityId!: string;
   public name!: string;
   public type!: DocumentType;
   public description?: string;
@@ -110,6 +112,16 @@ Document.init(
         key: "id",
       },
       onDelete: "CASCADE",
+    },
+    entityType: {
+      type: DataTypes.ENUM("user", "dependant"),
+      allowNull: false,
+      field: "entity_type",
+    },
+    entityId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      field: "entity_id",
     },
     name: {
       type: DataTypes.STRING(255),
