@@ -71,7 +71,7 @@ jobs:
           port: ${{ secrets.EC2_PORT }}
           script: |
             # Navigate to application directory
-            cd /var/www/mwu-kenya/mwuKenya/server
+            cd /var/www/mwuKenya
 
             # Pull latest changes
             git pull origin main
@@ -86,7 +86,7 @@ jobs:
             npm run db:migrate
 
             # Restart the application with PM2
-            pm2 restart mwu-kenya-server
+            pm2 restart mwuKenya-server
 
             # Save PM2 configuration
             pm2 save
@@ -95,7 +95,7 @@ jobs:
             pm2 status
 
             # Log deployment
-            echo "Deployment completed at $(date)" >> /var/www/mwu-kenya/deployment.log
+            echo "Deployment completed at $(date)" >> /var/www/mwuKenya/deployment.log
 
       - name: Health Check
         run: |

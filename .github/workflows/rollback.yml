@@ -33,7 +33,7 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           port: ${{ secrets.EC2_PORT }}
           script: |
-            cd /var/www/mwu-kenya/mwuKenya/server
+            cd /var/www/mwuKenya
 
             # Get current commit
             CURRENT_COMMIT=$(git rev-parse HEAD)
@@ -56,11 +56,11 @@ jobs:
             npm run build
 
             # Restart the application
-            pm2 restart mwu-kenya-server
+            pm2 restart mwuKenya-server
             pm2 save
 
             # Log rollback
-            echo "Rollback completed at $(date) to commit $(git rev-parse HEAD)" >> /var/www/mwu-kenya/rollback.log
+            echo "Rollback completed at $(date) to commit $(git rev-parse HEAD)" >> /var/www/mwuKenya/rollback.log
 
       - name: Rollback Staging
         if: inputs.environment == 'staging'
@@ -71,7 +71,7 @@ jobs:
           key: ${{ secrets.STAGING_EC2_SSH_KEY }}
           port: ${{ secrets.STAGING_EC2_PORT }}
           script: |
-            cd /var/www/mwu-kenya-staging/mwuKenya/server
+            cd /var/www/mwuKenya-staging
 
             # Get current commit
             CURRENT_COMMIT=$(git rev-parse HEAD)
@@ -80,7 +80,7 @@ jobs:
             # If specific commit provided, checkout that commit
             if [ -n "${{ inputs.commit_sha }}" ]; then
               git checkout ${{ inputs.commit_sha }}
-              echo "Rolled back to commit: ${{ inputs.commit_sha }}"
+              echo "Rolled back to previous commit: $(git rev-parse HEAD)"
             else
               # Rollback to previous commit
               git checkout HEAD~1
@@ -94,11 +94,11 @@ jobs:
             npm run build
 
             # Restart the application
-            pm2 restart mwu-kenya-staging-server
+            pm2 restart mwuKenya-staging-server
             pm2 save
 
             # Log rollback
-            echo "Rollback completed at $(date) to commit $(git rev-parse HEAD)" >> /var/www/mwu-kenya-staging/rollback.log
+            echo "Rollback completed at $(date) to commit $(git rev-parse HEAD)" >> /var/www/mwuKenya-staging/rollback.log
 
       - name: Rollback Notification
         run: |
