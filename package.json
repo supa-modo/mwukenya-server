@@ -17,7 +17,8 @@
     "db:seed:schemes": "ts-node -r tsconfig-paths/register src/seeders/medicalSchemeSeeder.ts",
     "db:reset": "ts-node -r tsconfig-paths/register src/scripts/resetDatabase.ts",
     "logs:clear": "rm -rf logs/*",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:zoho": "ts-node -r tsconfig-paths/register src/scripts/test-zoho-email.ts"
   },
   "keywords": [
     "payments",

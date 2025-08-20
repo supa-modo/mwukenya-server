@@ -1,0 +1,110 @@
+name: Rollback Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: "Commit SHA to rollback to (optional)"
+        required: false
+        default: ""
+      environment:
+        description: "Environment to rollback"
+        required: true
+        default: "production"
+        type: choice
+        options:
+          - production
+          - staging
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Rollback Production
+        if: inputs.environment == 'production'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_PORT }}
+          script: |
+            cd /var/www/mwu-kenya/mwuKenya/server
+
+            # Get current commit
+            CURRENT_COMMIT=$(git rev-parse HEAD)
+            echo "Current commit: $CURRENT_COMMIT"
+
+            # If specific commit provided, checkout that commit
+            if [ -n "${{ inputs.commit_sha }}" ]; then
+              git checkout ${{ inputs.commit_sha }}
+              echo "Rolled back to commit: ${{ inputs.commit_sha }}"
+            else
+              # Rollback to previous commit
+              git checkout HEAD~1
+              echo "Rolled back to previous commit: $(git rev-parse HEAD)"
+            fi
+
+            # Install dependencies
+            npm ci --only=production
+
+            # Build the application
+            npm run build
+
+            # Restart the application
+            pm2 restart mwu-kenya-server
+            pm2 save
+
+            # Log rollback
+            echo "Rollback completed at $(date) to commit $(git rev-parse HEAD)" >> /var/www/mwu-kenya/rollback.log
+
+      - name: Rollback Staging
+        if: inputs.environment == 'staging'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.STAGING_EC2_HOST }}
+          username: ${{ secrets.STAGING_EC2_USERNAME }}
+          key: ${{ secrets.STAGING_EC2_SSH_KEY }}
+          port: ${{ secrets.STAGING_EC2_PORT }}
+          script: |
+            cd /var/www/mwu-kenya-staging/mwuKenya/server
+
+            # Get current commit
+            CURRENT_COMMIT=$(git rev-parse HEAD)
+            echo "Current commit: $CURRENT_COMMIT"
+
+            # If specific commit provided, checkout that commit
+            if [ -n "${{ inputs.commit_sha }}" ]; then
+              git checkout ${{ inputs.commit_sha }}
+              echo "Rolled back to commit: ${{ inputs.commit_sha }}"
+            else
+              # Rollback to previous commit
+              git checkout HEAD~1
+              echo "Rolled back to previous commit: $(git rev-parse HEAD)"
+            fi
+
+            # Install dependencies
+            npm ci --only=production
+
+            # Build the application
+            npm run build
+
+            # Restart the application
+            pm2 restart mwu-kenya-staging-server
+            pm2 save
+
+            # Log rollback
+            echo "Rollback completed at $(date) to commit $(git rev-parse HEAD)" >> /var/www/mwu-kenya-staging/rollback.log
+
+      - name: Rollback Notification
+        run: |
+          echo "✅ Rollback to ${{ inputs.environment }} completed successfully!"
+          if [ -n "${{ inputs.commit_sha }}" ]; then
+            echo "Rolled back to specific commit: ${{ inputs.commit_sha }}"
+          else
+            echo "Rolled back to previous commit"
+          fi

@@ -1,0 +1,115 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches: [develop, staging]
+  pull_request:
+    branches: [develop, staging]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: mwuKenya/server/package-lock.json
+
+      - name: Install dependencies
+        working-directory: mwuKenya/server
+        run: npm ci
+
+      - name: Run linting
+        working-directory: mwuKenya/server
+        run: npm run lint
+
+      - name: Type check
+        working-directory: mwuKenya/server
+        run: npm run typecheck
+
+      - name: Build application
+        working-directory: mwuKenya/server
+        run: npm run build
+
+  deploy-staging:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/staging'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: mwuKenya/server/package-lock.json
+
+      - name: Install dependencies
+        working-directory: mwuKenya/server
+        run: npm ci
+
+      - name: Build application
+        working-directory: mwuKenya/server
+        run: npm run build
+
+      - name: Deploy to Staging EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.STAGING_EC2_HOST }}
+          username: ${{ secrets.STAGING_EC2_USERNAME }}
+          key: ${{ secrets.STAGING_EC2_SSH_KEY }}
+          port: ${{ secrets.STAGING_EC2_PORT }}
+          script: |
+            # Navigate to staging application directory
+            cd /var/www/mwu-kenya-staging/mwuKenya/server
+
+            # Pull latest changes
+            git pull origin ${{ github.ref_name }}
+
+            # Install dependencies
+            npm ci --only=production
+
+            # Build the application
+            npm run build
+
+            # Run database migrations (if any)
+            npm run db:migrate
+
+            # Restart the staging application with PM2
+            pm2 restart mwu-kenya-staging-server
+
+            # Save PM2 configuration
+            pm2 save
+
+            # Check application status
+            pm2 status
+
+            # Log deployment
+            echo "Staging deployment completed at $(date) from branch ${{ github.ref_name }}" >> /var/www/mwu-kenya-staging/deployment.log
+
+      - name: Staging Health Check
+        run: |
+          # Wait a bit for the application to start
+          sleep 30
+
+          # Test the staging application health endpoint
+          curl -f ${{ secrets.STAGING_EC2_HEALTH_CHECK_URL }} || exit 1
+
+      - name: Staging Deployment Notification
+        if: always()
+        run: |
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "✅ Staging deployment successful!"
+          else
+            echo "❌ Staging deployment failed!"
+          fi

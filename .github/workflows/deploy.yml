@@ -1,0 +1,115 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: mwuKenya/server/package-lock.json
+
+      - name: Install dependencies
+        working-directory: mwuKenya/server
+        run: npm ci
+
+      - name: Run linting
+        working-directory: mwuKenya/server
+        run: npm run lint
+
+      - name: Type check
+        working-directory: mwuKenya/server
+        run: npm run typecheck
+
+      - name: Build application
+        working-directory: mwuKenya/server
+        run: npm run build
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: mwuKenya/server/package-lock.json
+
+      - name: Install dependencies
+        working-directory: mwuKenya/server
+        run: npm ci
+
+      - name: Build application
+        working-directory: mwuKenya/server
+        run: npm run build
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_PORT }}
+          script: |
+            # Navigate to application directory
+            cd /var/www/mwu-kenya/mwuKenya/server
+
+            # Pull latest changes
+            git pull origin main
+
+            # Install dependencies
+            npm ci --only=production
+
+            # Build the application
+            npm run build
+
+            # Run database migrations (if any)
+            npm run db:migrate
+
+            # Restart the application with PM2
+            pm2 restart mwu-kenya-server
+
+            # Save PM2 configuration
+            pm2 save
+
+            # Check application status
+            pm2 status
+
+            # Log deployment
+            echo "Deployment completed at $(date)" >> /var/www/mwu-kenya/deployment.log
+
+      - name: Health Check
+        run: |
+          # Wait a bit for the application to start
+          sleep 30
+
+          # Test the application health endpoint
+          curl -f ${{ secrets.EC2_HEALTH_CHECK_URL }} || exit 1
+
+      - name: Deployment Notification
+        if: always()
+        run: |
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "✅ Deployment successful!"
+          else
+            echo "❌ Deployment failed!"
+          fi

@@ -264,6 +264,17 @@ const server = app.listen(config.port, async () => {
 💚 Health Check: ${config.apiUrl}/health
   `);
 
+  console.log(
+    `🚀 MWU Kenya Digital Platform API is running!
+    📍 Environment: ${config.env}
+    🌐 Port: ${config.port}
+    📊 API Version: ${config.apiVersion}
+    🔗 Base URL: ${config.apiUrl}
+    📋 API Endpoints: ${config.apiUrl}/api/${config.apiVersion}
+    💚 Health Check: ${config.apiUrl}/health
+  `
+  );
+
   // Initialize application after server starts
   await initializeApp();
 });
