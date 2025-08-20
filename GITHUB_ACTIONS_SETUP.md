@@ -91,7 +91,7 @@ sudo -u ec2-user ssh -i ~/.ssh/github-actions localhost
 cd /var/www/mwuKenya
 
 # Configure git to use HTTPS (more secure for automation)
-git remote set-url origin https://github.com/your-username/crewAfya-payments.git
+git remote set-url origin https://github.com/supa-modo/mwukenya-server.git
 
 # Or if you prefer SSH, ensure the key is properly configured
 git remote set-url origin git@github.com:your-username/crewAfya-payments.git
