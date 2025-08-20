@@ -56,10 +56,10 @@ module.exports = {
   // Deployment configuration
   deploy: {
     production: {
-      user: "ec2-user",
+      user: "ubuntu",
       host: "localhost",
       ref: "origin/main",
-      repo: "https://github.com/your-username/crewAfya-payments.git",
+      repo: "https://github.com/supa-modo/mwukenya-server.git",
       path: "/var/www/mwuKenya",
       "post-deploy":
         "npm ci --only=production && npm run build && pm2 restart ecosystem.config.js --env production",

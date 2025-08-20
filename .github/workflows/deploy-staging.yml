@@ -20,22 +20,22 @@ jobs:
         with:
           node-version: "18"
           cache: "npm"
-          cache-dependency-path: mwuKenya/server/package-lock.json
+          cache-dependency-path: mwuKenya/package-lock.json
 
       - name: Install dependencies
-        working-directory: mwuKenya/server
+        working-directory: mwuKenya
         run: npm ci
 
       - name: Run linting
-        working-directory: mwuKenya/server
+        working-directory: mwuKenya
         run: npm run lint
 
       - name: Type check
-        working-directory: mwuKenya/server
+        working-directory: mwuKenya
         run: npm run typecheck
 
       - name: Build application
-        working-directory: mwuKenya/server
+        working-directory: mwuKenya
         run: npm run build
 
   deploy-staging:
@@ -52,14 +52,14 @@ jobs:
         with:
           node-version: "18"
           cache: "npm"
-          cache-dependency-path: mwuKenya/server/package-lock.json
+          cache-dependency-path: mwuKenya/package-lock.json
 
       - name: Install dependencies
-        working-directory: mwuKenya/server
+        working-directory: mwuKenya
         run: npm ci
 
       - name: Build application
-        working-directory: mwuKenya/server
+        working-directory: mwuKenya
         run: npm run build
 
       - name: Deploy to Staging EC2
@@ -71,7 +71,7 @@ jobs:
           port: ${{ secrets.STAGING_EC2_PORT }}
           script: |
             # Navigate to staging application directory
-            cd /var/www/mwu-kenya-staging/mwuKenya/server
+            cd /var/www/mwuKenya-staging
 
             # Pull latest changes
             git pull origin ${{ github.ref_name }}
@@ -86,7 +86,7 @@ jobs:
             npm run db:migrate
 
             # Restart the staging application with PM2
-            pm2 restart mwu-kenya-staging-server
+            pm2 restart mwuKenya-staging-server
 
             # Save PM2 configuration
             pm2 save
@@ -95,7 +95,7 @@ jobs:
             pm2 status
 
             # Log deployment
-            echo "Staging deployment completed at $(date) from branch ${{ github.ref_name }}" >> /var/www/mwu-kenya-staging/deployment.log
+            echo "Staging deployment completed at $(date) from branch ${{ github.ref_name }}" >> /var/www/mwuKenya-staging/deployment.log
 
       - name: Staging Health Check
         run: |

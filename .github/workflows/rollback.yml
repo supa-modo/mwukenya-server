@@ -33,7 +33,7 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           port: ${{ secrets.EC2_PORT }}
           script: |
-            cd /var/www/mwu-kenya/mwuKenya/server
+            cd /var/www/mwuKenya
 
             # Get current commit
             CURRENT_COMMIT=$(git rev-parse HEAD)
@@ -71,7 +71,7 @@ jobs:
           key: ${{ secrets.STAGING_EC2_SSH_KEY }}
           port: ${{ secrets.STAGING_EC2_PORT }}
           script: |
-            cd /var/www/mwu-kenya-staging/mwuKenya/server
+            cd /var/www/mwuKenya-staging
 
             # Get current commit
             CURRENT_COMMIT=$(git rev-parse HEAD)
