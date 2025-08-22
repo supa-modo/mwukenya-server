@@ -1,7 +1,7 @@
 // TypeScript Type Definitions for MWU Kenya Digital Platform
 
 // Enums matching database types
-export enum UserRole {
+export enum   UserRole {
   MEMBER = "member",
   DELEGATE = "delegate",
   COORDINATOR = "coordinator",

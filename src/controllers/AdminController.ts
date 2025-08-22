@@ -1,8 +1,9 @@
 import { Request, Response } from "express";
-import { User } from "../models";
+import { User, MemberSubscription, MedicalScheme, Document } from "../models";
 import { ApiError } from "../utils/apiError";
 import logger from "../utils/logger";
 import { Op } from "sequelize";
+import { MembershipStatus, DocumentStatus, UserRole } from "../models/types";
 
 export class AdminController {
   /**
@@ -122,7 +123,7 @@ export class AdminController {
   }
 
   /**
-   * Get user statistics for admin dashboard
+   * Get comprehensive statistics for admin dashboard
    */
   public static async getUserStats(req: Request, res: Response): Promise<void> {
     try {
@@ -175,6 +176,65 @@ export class AdminController {
       });
     } catch (error) {
       logger.error("Error getting user statistics:", error);
+
+      res.status(500).json({
+        success: false,
+        error: {
+          code: "SYS_001",
+          message: "Internal server error",
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  /**
+   * Get comprehensive dashboard statistics
+   */
+  public static async getDashboardStats(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      // Get user statistics
+      const totalUsers = await User.count();
+      const members = await User.count({
+        where: { role: "member" },
+      });
+      const delegates = await User.count({
+        where: { role: "delegate" },
+      });
+
+      // Get subscription statistics
+      const activeSubscriptions = await MemberSubscription.count({
+        where: { status: "active" },
+      });
+
+      // Get medical scheme statistics
+      const activeMedicalSchemes = await MedicalScheme.count({
+        where: { isActive: true },
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          users: {
+            total: totalUsers,
+            members,
+            delegates,
+          },
+          subscriptions: {
+            active: activeSubscriptions,
+          },
+          medicalSchemes: {
+            active: activeMedicalSchemes,
+          },
+        },
+        message: "Dashboard statistics retrieved successfully",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      logger.error("Error getting dashboard statistics:", error);
 
       res.status(500).json({
         success: false,
@@ -255,7 +315,7 @@ export class AdminController {
       }
 
       // Validate role hierarchy
-      if (role === "member" && !delegateId) {
+      if (role === UserRole.MEMBER && !delegateId) {
         throw new ApiError(
           "Members must be assigned to a delegate. Please select a delegate from the dropdown.",
           "USER_004",
@@ -263,7 +323,7 @@ export class AdminController {
         );
       }
 
-      if (role === "delegate" && !coordinatorId) {
+      if (role === UserRole.DELEGATE && !coordinatorId) {
         throw new ApiError(
           "Delegates must be assigned to a coordinator. Please select a coordinator from the dropdown.",
           "USER_005",
@@ -274,7 +334,7 @@ export class AdminController {
       // Verify delegate exists if assigned
       if (delegateId) {
         const delegate = await User.findByPk(delegateId);
-        if (!delegate || delegate.role !== "delegate") {
+        if (!delegate || delegate.role !== UserRole.DELEGATE) {
           throw new ApiError(
             `The selected delegate (ID: ${delegateId}) does not exist or is not a delegate. Please select a valid delegate.`,
             "USER_006",
@@ -286,7 +346,7 @@ export class AdminController {
       // Verify coordinator exists if assigned
       if (coordinatorId) {
         const coordinator = await User.findByPk(coordinatorId);
-        if (!coordinator || coordinator.role !== "coordinator") {
+        if (!coordinator || coordinator.role !== UserRole.COORDINATOR) {
           throw new ApiError(
             `The selected coordinator (ID: ${coordinatorId}) does not exist or is not a coordinator. Please select a valid coordinator.`,
             "USER_007",
@@ -425,7 +485,7 @@ export class AdminController {
         updateData.coordinatorCode = undefined;
 
         // Validate role hierarchy requirements
-        if (updateData.role === "member") {
+        if (updateData.role === UserRole.MEMBER) {
           if (!updateData.delegateId) {
             throw new ApiError(
               "When changing a user to a member role, delegate assignment is required. Please select a delegate from the dropdown.",
@@ -433,7 +493,7 @@ export class AdminController {
               400
             );
           }
-        } else if (updateData.role === "delegate") {
+        } else if (updateData.role === UserRole.DELEGATE) {
           if (!updateData.coordinatorId) {
             throw new ApiError(
               "When changing a user to a delegate role, coordinator assignment is required. Please select a coordinator from the dropdown.",
@@ -443,19 +503,19 @@ export class AdminController {
           }
           // Generate new delegate code
           updateData.delegateCode = User.generateDelegateCode();
-        } else if (updateData.role === "coordinator") {
+        } else if (updateData.role === UserRole.COORDINATOR) {
           // Generate new coordinator code
           updateData.coordinatorCode = User.generateCoordinatorCode();
         }
 
         // Clear old relationships when role changes
-        if (user.role === "coordinator") {
+        if (user.role === UserRole.COORDINATOR) {
           // If user was a coordinator, clear all delegate relationships
           await User.update(
             { coordinatorId: undefined, coordinatorCode: undefined },
             { where: { coordinatorId: id } }
           );
-        } else if (user.role === "delegate") {
+        } else if (user.role === UserRole.DELEGATE) {
           // If user was a delegate, clear all member relationships
           await User.update(
             { delegateId: undefined, delegateCode: undefined },
@@ -464,7 +524,10 @@ export class AdminController {
         }
       } else {
         // Handle code updates for existing roles
-        if (updateData.role === "member" || user.role === "member") {
+        if (
+          updateData.role === UserRole.MEMBER ||
+          user.role === UserRole.MEMBER
+        ) {
           if (
             updateData.delegateId &&
             updateData.delegateId !== user.delegateId
@@ -472,7 +535,10 @@ export class AdminController {
             // Clear old delegate code when changing delegate
             updateData.delegateCode = undefined;
           }
-        } else if (updateData.role === "delegate" || user.role === "delegate") {
+        } else if (
+          updateData.role === UserRole.DELEGATE ||
+          user.role === UserRole.DELEGATE
+        ) {
           if (
             updateData.coordinatorId &&
             updateData.coordinatorId !== user.coordinatorId
@@ -486,7 +552,7 @@ export class AdminController {
       // Verify delegate exists if assigned
       if (updateData.delegateId) {
         const delegate = await User.findByPk(updateData.delegateId);
-        if (!delegate || delegate.role !== "delegate") {
+        if (!delegate || delegate.role !== UserRole.DELEGATE) {
           throw new ApiError(
             `The selected delegate (ID: ${updateData.delegateId}) does not exist or is not a delegate. Please select a valid delegate.`,
             "USER_014",
@@ -498,7 +564,7 @@ export class AdminController {
       // Verify coordinator exists if assigned
       if (updateData.coordinatorId) {
         const coordinator = await User.findByPk(updateData.coordinatorId);
-        if (!coordinator || coordinator.role !== "coordinator") {
+        if (!coordinator || coordinator.role !== UserRole.COORDINATOR) {
           throw new ApiError(
             `The selected coordinator (ID: ${updateData.coordinatorId}) does not exist or is not a coordinator. Please select a valid coordinator.`,
             "USER_015",
@@ -579,7 +645,7 @@ export class AdminController {
       }
 
       // Check if user has dependents
-      if (user.role === "coordinator") {
+      if (user.role === UserRole.COORDINATOR) {
         const delegateCount = await User.count({
           where: { coordinatorId: id },
         });
@@ -592,7 +658,7 @@ export class AdminController {
         }
       }
 
-      if (user.role === "delegate") {
+      if (user.role === UserRole.DELEGATE) {
         const memberCount = await User.count({ where: { delegateId: id } });
         if (memberCount > 0) {
           throw new ApiError(
@@ -613,6 +679,640 @@ export class AdminController {
       });
     } catch (error) {
       logger.error("Error deleting user:", error);
+
+      if (error instanceof ApiError) {
+        res.status(error.statusCode).json({
+          success: false,
+          error: {
+            code: error.code,
+            message: error.message,
+          },
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        error: {
+          code: "SYS_001",
+          message: "Internal server error",
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  /**
+   * Get members pending verification with their documents
+   */
+  public static async getMembersPendingVerification(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      const { page = 1, limit = 20, search = "", filter = "all" } = req.query;
+      const pageNumber = parseInt(page as string);
+      const limitNumber = parseInt(limit as string);
+      const offset = (pageNumber - 1) * limitNumber;
+
+      // Build where clause for filtering
+      const whereClause: any = {
+        role: UserRole.MEMBER,
+      };
+
+      // Filter by verification status
+      if (filter === "pending") {
+        whereClause.membershipStatus = MembershipStatus.PENDING;
+      } else if (filter === "verified") {
+        whereClause.membershipStatus = MembershipStatus.ACTIVE;
+      } else if (filter === "rejected") {
+        whereClause.membershipStatus = MembershipStatus.SUSPENDED;
+      }
+
+      // Build search conditions
+      const searchConditions = [];
+      if (search && typeof search === "string" && search.trim() !== "") {
+        searchConditions.push(
+          { firstName: { [Op.iLike]: `%${search}%` } },
+          { lastName: { [Op.iLike]: `%${search}%` } },
+          { otherNames: { [Op.iLike]: `%${search}%` } },
+          { phoneNumber: { [Op.iLike]: `%${search}%` } },
+          { idNumber: { [Op.iLike]: `%${search}%` } },
+          { membershipNumber: { [Op.iLike]: `%${search}%` } }
+        );
+      }
+
+      if (searchConditions.length > 0) {
+        whereClause[Op.or] = searchConditions;
+      }
+
+      // Get users with pagination
+      const { count, rows: users } = await User.findAndCountAll({
+        where: whereClause,
+        attributes: {
+          exclude: [
+            "passwordHash",
+            "refreshToken",
+            "passwordResetToken",
+            "passwordResetExpires",
+          ],
+        },
+        include: [
+          {
+            model: Document,
+            as: "documents",
+            attributes: ["id", "type", "name", "status", "uploadedAt", "url"],
+            where: { entityType: "user" },
+            required: false,
+          },
+        ],
+        order: [["createdAt", "DESC"]],
+        limit: limitNumber,
+        offset: offset,
+      });
+
+      // Calculate pagination info
+      const totalPages = Math.ceil(count / limitNumber);
+      const hasNextPage = pageNumber < totalPages;
+      const hasPrevPage = pageNumber > 1;
+
+      res.status(200).json({
+        success: true,
+        data: {
+          users,
+          pagination: {
+            currentPage: pageNumber,
+            totalPages,
+            totalItems: count,
+            itemsPerPage: limitNumber,
+            hasNextPage,
+            hasPrevPage,
+          },
+        },
+        message: "Members pending verification retrieved successfully",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      logger.error("Error getting members pending verification:", error);
+
+      res.status(500).json({
+        success: false,
+        error: {
+          code: "SYS_001",
+          message: "Internal server error",
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  /**
+   * Get member verification details by ID
+   */
+  public static async getMemberVerificationDetails(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      const { id } = req.params;
+
+      const user = await User.findByPk(id, {
+        attributes: {
+          exclude: [
+            "passwordHash",
+            "refreshToken",
+            "passwordResetToken",
+            "passwordResetExpires",
+          ],
+        },
+        include: [
+          {
+            model: Document,
+            as: "documents",
+            attributes: [
+              "id",
+              "type",
+              "name",
+              "description",
+              "status",
+              "uploadedAt",
+              "url",
+              "fileName",
+              "fileSize",
+              "mimeType",
+              "verifiedAt",
+              "verifiedBy",
+              "rejectionReason",
+            ],
+            where: { entityType: "user" },
+            required: false,
+          },
+          {
+            model: User,
+            as: "delegate",
+            attributes: [
+              "id",
+              "firstName",
+              "lastName",
+              "phoneNumber",
+              "delegateCode",
+            ],
+            required: false,
+          },
+        ],
+      });
+
+      if (!user) {
+        throw new ApiError("Member not found", "USER_019", 404);
+      }
+
+      if (user.role !== UserRole.MEMBER) {
+        throw new ApiError("User is not a member", "USER_020", 400);
+      }
+
+      res.status(200).json({
+        success: true,
+        data: user,
+        message: "Member verification details retrieved successfully",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      logger.error("Error getting member verification details:", error);
+
+      if (error instanceof ApiError) {
+        res.status(error.statusCode).json({
+          success: false,
+          error: {
+            code: error.code,
+            message: error.message,
+          },
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        error: {
+          code: "SYS_001",
+          message: "Internal server error",
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  /**
+   * Get hierarchy performance statistics
+   */
+  public static async getHierarchyPerformance(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      // Get all coordinators
+      const coordinators = await User.findAll({
+        where: { role: UserRole.COORDINATOR },
+        attributes: ["id", "firstName", "lastName", "county", "createdAt"],
+      });
+
+      const hierarchyData = await Promise.all(
+        coordinators.map(async (coordinator) => {
+          // Count delegates for this coordinator
+          const delegateCount = await User.count({
+            where: {
+              role: UserRole.DELEGATE,
+              coordinatorId: coordinator.id,
+            },
+          });
+
+          // Count total members under this coordinator's delegates
+          const totalMembers = await User.count({
+            where: {
+              role: UserRole.MEMBER,
+              coordinatorId: coordinator.id,
+            },
+          });
+
+          // Count active members under this coordinator's delegates
+          const activeMembers = await User.count({
+            where: {
+              role: UserRole.MEMBER,
+              coordinatorId: coordinator.id,
+              membershipStatus: MembershipStatus.ACTIVE,
+            },
+          });
+
+          const activeRate =
+            totalMembers > 0
+              ? Math.round((activeMembers / totalMembers) * 100)
+              : 0;
+
+          // Calculate performance based on active rate and member count
+          let performance = 0;
+          if (activeRate >= 90) performance = 1;
+          else if (activeRate >= 80) performance = 0;
+          else performance = -1;
+
+          return {
+            id: coordinator.id,
+            name: `${coordinator.firstName} ${coordinator.lastName}`,
+            region: coordinator.county || "Unknown Region",
+            delegates: delegateCount,
+            totalMembers,
+            activeRate,
+            performance,
+          };
+        })
+      );
+
+      res.status(200).json({
+        success: true,
+        data: hierarchyData,
+        message: "Hierarchy performance data retrieved successfully",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      logger.error("Error getting hierarchy performance:", error);
+
+      res.status(500).json({
+        success: false,
+        error: {
+          code: "SYS_001",
+          message: "Internal server error",
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  /**
+   * Verify member documents and update membership status
+   */
+  public static async verifyMember(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { action, documentId, reason, notes } = req.body;
+
+      const user = await User.findByPk(id);
+      if (!user) {
+        throw new ApiError("Member not found", "USER_021", 404);
+      }
+
+      if (user.role !== UserRole.MEMBER) {
+        throw new ApiError("User is not a member", "USER_022", 400);
+      }
+
+      if (action === "approve") {
+        // Check if all required documents are verified
+        const documents = await Document.findAll({
+          where: { userId: id, entityType: "user" },
+        });
+
+        const requiredDocuments = ["identity", "photo"];
+        const verifiedDocuments = documents.filter(
+          (doc) => doc.status === DocumentStatus.VERIFIED
+        );
+
+        if (verifiedDocuments.length < requiredDocuments.length) {
+          throw new ApiError(
+            "Cannot approve member: Not all required documents are verified",
+            "VERIFY_001",
+            400
+          );
+        }
+
+        // Update user membership status to active
+        await user.update({
+          membershipStatus: MembershipStatus.ACTIVE,
+          membershipDate: new Date(),
+        });
+
+        res.status(200).json({
+          success: true,
+          message: "Member verified and activated successfully",
+          timestamp: new Date().toISOString(),
+        });
+      } else if (action === "reject") {
+        if (!reason) {
+          throw new ApiError("Rejection reason is required", "VERIFY_002", 400);
+        }
+
+        // Update user membership status to suspended
+        await user.update({
+          membershipStatus: MembershipStatus.SUSPENDED,
+        });
+
+        res.status(200).json({
+          success: true,
+          message: "Member verification rejected",
+          timestamp: new Date().toISOString(),
+        });
+      } else if (action === "verifyDocument") {
+        if (!documentId) {
+          throw new ApiError("Document ID is required", "VERIFY_003", 400);
+        }
+
+        const document = await Document.findByPk(documentId);
+        if (!document || document.userId !== id) {
+          throw new ApiError("Document not found", "VERIFY_004", 404);
+        }
+
+        // Mark document as verified
+        await document.update({
+          status: DocumentStatus.VERIFIED,
+          verifiedAt: new Date(),
+          verifiedBy: req.user?.id,
+        });
+
+        res.status(200).json({
+          success: true,
+          message: "Document verified successfully",
+          timestamp: new Date().toISOString(),
+        });
+      } else if (action === "rejectDocument") {
+        if (!documentId || !reason) {
+          throw new ApiError(
+            "Document ID and rejection reason are required",
+            "VERIFY_005",
+            400
+          );
+        }
+
+        const document = await Document.findByPk(documentId);
+        if (!document || document.userId !== id) {
+          throw new ApiError("Document not found", "VERIFY_006", 404);
+        }
+
+        // Mark document as rejected
+        await document.update({
+          status: DocumentStatus.REJECTED,
+          rejectionReason: reason,
+          verifiedAt: new Date(),
+          verifiedBy: req.user?.id,
+        });
+
+        res.status(200).json({
+          success: true,
+          message: "Document rejected successfully",
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        throw new ApiError("Invalid action", "VERIFY_007", 400);
+      }
+    } catch (error) {
+      logger.error("Error verifying member:", error);
+
+      if (error instanceof ApiError) {
+        res.status(error.statusCode).json({
+          success: false,
+          error: {
+            code: error.code,
+            message: error.message,
+          },
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        error: {
+          code: "SYS_001",
+          message: "Internal server error",
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  /**
+   * Get delegates under a specific coordinator
+   */
+  public static async getDelegatesByCoordinator(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      const { coordinatorId } = req.params;
+      const { page = 1, limit = 20, search = "" } = req.query;
+      const pageNumber = parseInt(page as string);
+      const limitNumber = parseInt(limit as string);
+      const offset = (pageNumber - 1) * limitNumber;
+
+      // Verify coordinator exists and is a coordinator
+      const coordinator = await User.findByPk(coordinatorId);
+      if (!coordinator || coordinator.role !== UserRole.COORDINATOR) {
+        throw new ApiError("Coordinator not found", "USER_023", 404);
+      }
+
+      // Build where clause for filtering
+      const whereClause: any = {
+        role: UserRole.DELEGATE,
+        coordinatorId: coordinatorId,
+      };
+
+      // Build search conditions
+      const searchConditions = [];
+      if (search && typeof search === "string" && search.trim() !== "") {
+        searchConditions.push(
+          { firstName: { [Op.iLike]: `%${search}%` } },
+          { lastName: { [Op.iLike]: `%${search}%` } },
+          { otherNames: { [Op.iLike]: `%${search}%` } },
+          { phoneNumber: { [Op.iLike]: `%${search}%` } },
+          { delegateCode: { [Op.iLike]: `%${search}%` } }
+        );
+      }
+
+      if (searchConditions.length > 0) {
+        whereClause[Op.or] = searchConditions;
+      }
+
+      // Get delegates with pagination
+      const { count, rows: delegates } = await User.findAndCountAll({
+        where: whereClause,
+        attributes: {
+          exclude: [
+            "passwordHash",
+            "refreshToken",
+            "passwordResetToken",
+            "passwordResetExpires",
+          ],
+        },
+        order: [["createdAt", "DESC"]],
+        limit: limitNumber,
+        offset: offset,
+      });
+
+      // Calculate pagination info
+      const totalPages = Math.ceil(count / limitNumber);
+      const hasNextPage = pageNumber < totalPages;
+      const hasPrevPage = pageNumber > 1;
+
+      res.status(200).json({
+        success: true,
+        data: {
+          delegates,
+          pagination: {
+            currentPage: pageNumber,
+            totalPages,
+            totalItems: count,
+            itemsPerPage: limitNumber,
+            hasNextPage,
+            hasPrevPage,
+          },
+        },
+        message: "Delegates retrieved successfully",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      logger.error("Error getting delegates by coordinator:", error);
+
+      if (error instanceof ApiError) {
+        res.status(error.statusCode).json({
+          success: false,
+          error: {
+            code: error.code,
+            message: error.message,
+          },
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        error: {
+          code: "SYS_001",
+          message: "Internal server error",
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  /**
+   * Get members under a specific delegate
+   */
+  public static async getMembersByDelegate(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      const { delegateId } = req.params;
+      const { page = 1, limit = 20, search = "" } = req.query;
+      const pageNumber = parseInt(page as string);
+      const limitNumber = parseInt(limit as string);
+      const offset = (pageNumber - 1) * limitNumber;
+
+      // Verify delegate exists and is a delegate
+      const delegate = await User.findByPk(delegateId);
+      if (!delegate || delegate.role !== UserRole.DELEGATE) {
+        throw new ApiError("Delegate not found", "USER_024", 404);
+      }
+
+      // Build where clause for filtering
+      const whereClause: any = {
+        role: UserRole.MEMBER,
+        delegateId: delegateId,
+      };
+
+      // Build search conditions
+      const searchConditions = [];
+      if (search && typeof search === "string" && search.trim() !== "") {
+        searchConditions.push(
+          { firstName: { [Op.iLike]: `%${search}%` } },
+          { lastName: { [Op.iLike]: `%${search}%` } },
+          { otherNames: { [Op.iLike]: `%${search}%` } },
+          { phoneNumber: { [Op.iLike]: `%${search}%` } },
+          { membershipNumber: { [Op.iLike]: `%${search}%` } }
+        );
+      }
+
+      if (searchConditions.length > 0) {
+        whereClause[Op.or] = searchConditions;
+      }
+
+      // Get members with pagination
+      const { count, rows: members } = await User.findAndCountAll({
+        where: whereClause,
+        attributes: {
+          exclude: [
+            "passwordHash",
+            "refreshToken",
+            "passwordResetToken",
+            "passwordResetExpires",
+          ],
+        },
+        order: [["createdAt", "DESC"]],
+        limit: limitNumber,
+        offset: offset,
+      });
+
+      // Calculate pagination info
+      const totalPages = Math.ceil(count / limitNumber);
+      const hasNextPage = pageNumber < totalPages;
+      const hasPrevPage = pageNumber > 1;
+
+      res.status(200).json({
+        success: true,
+        data: {
+          members,
+          pagination: {
+            currentPage: pageNumber,
+            totalPages,
+            totalItems: count,
+            itemsPerPage: limitNumber,
+            hasNextPage,
+            hasPrevPage,
+          },
+        },
+        message: "Members retrieved successfully",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      logger.error("Error getting members by delegate:", error);
 
       if (error instanceof ApiError) {
         res.status(error.statusCode).json({
