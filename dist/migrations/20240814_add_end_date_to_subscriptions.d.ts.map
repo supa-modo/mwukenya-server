@@ -1,0 +1,1 @@
+{"version":3,"file":"20240814_add_end_date_to_subscriptions.d.ts","sourceRoot":"","sources":["../../src/migrations/20240814_add_end_date_to_subscriptions.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,cAAc,EAAa,MAAM,WAAW,CAAC;AAEtD,wBAAsB,EAAE,CAAC,cAAc,EAAE,cAAc,GAAG,OAAO,CAAC,IAAI,CAAC,CAUtE;AAED,wBAAsB,IAAI,CAAC,cAAc,EAAE,cAAc,GAAG,OAAO,CAAC,IAAI,CAAC,CASxE"}

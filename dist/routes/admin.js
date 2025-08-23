@@ -1,0 +1,21 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const AdminController_1 = require("../controllers/AdminController");
+const auth_1 = require("../middleware/auth");
+const router = (0, express_1.Router)();
+router.use(auth_1.authenticate);
+router.get("/users", AdminController_1.AdminController.getAllUsers);
+router.get("/users/stats", AdminController_1.AdminController.getUserStats);
+router.post("/users", AdminController_1.AdminController.createUser);
+router.put("/users/:id", AdminController_1.AdminController.updateUser);
+router.delete("/users/:id", AdminController_1.AdminController.deleteUser);
+router.get("/dashboard/stats", AdminController_1.AdminController.getDashboardStats);
+router.get("/dashboard/hierarchy-performance", AdminController_1.AdminController.getHierarchyPerformance);
+router.get("/verification/members", AdminController_1.AdminController.getMembersPendingVerification);
+router.get("/verification/members/:id", AdminController_1.AdminController.getMemberVerificationDetails);
+router.post("/verification/members/:id", AdminController_1.AdminController.verifyMember);
+router.get("/coordinators/:coordinatorId/delegates", AdminController_1.AdminController.getDelegatesByCoordinator);
+router.get("/delegates/:delegateId/members", AdminController_1.AdminController.getMembersByDelegate);
+exports.default = router;
+//# sourceMappingURL=admin.js.map
