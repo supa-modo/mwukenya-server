@@ -1,20 +1,25 @@
-import AWS from "aws-sdk";
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
+  HeadObjectCommand,
+  CopyObjectCommand,
+  ListObjectsV2Command,
+} from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { Upload } from "@aws-sdk/lib-storage";
+import { Readable } from "stream";
 import { config } from "./index";
 import logger from "../utils/logger";
 import { v4 as uuidv4 } from "uuid";
 
-// Configure AWS SDK
-AWS.config.update({
-  accessKeyId: config.aws.accessKeyId,
-  secretAccessKey: config.aws.secretAccessKey,
+// Create S3 client with AWS SDK v3
+const s3Client = new S3Client({
   region: config.aws.region,
-});
-
-// Create S3 instance
-const s3 = new AWS.S3({
-  signatureVersion: "v4",
-  params: {
-    Bucket: config.aws.s3Bucket,
+  credentials: {
+    accessKeyId: config.aws.accessKeyId,
+    secretAccessKey: config.aws.secretAccessKey,
   },
 });
 
@@ -56,25 +61,35 @@ export class S3Service {
     key: string,
     mimeType: string,
     fileName: string
-  ): Promise<AWS.S3.ManagedUpload.SendData> {
+  ): Promise<{ Bucket: string; Key: string; Location: string }> {
     try {
-      const uploadParams: AWS.S3.PutObjectRequest = {
-        Bucket: this.bucket,
-        Key: key,
-        Body: buffer,
-        ContentType: mimeType,
-        Metadata: {
-          originalFileName: fileName,
-          uploadedAt: new Date().toISOString(),
+      const upload = new Upload({
+        client: s3Client,
+        params: {
+          Bucket: this.bucket,
+          Key: key,
+          Body: buffer,
+          ContentType: mimeType,
+          ContentDisposition: `attachment; filename="${fileName}"`,
+          Metadata: {
+            originalFileName: fileName,
+            uploadedAt: new Date().toISOString(),
+          },
+          ServerSideEncryption: "AES256",
         },
-        ServerSideEncryption: "AES256",
-      };
+        queueSize: 4, // Number of concurrent uploads
+        partSize: 1024 * 1024 * 5, // 5MB chunks
+      });
 
       logger.info(`Uploading file to S3: ${key}`);
-      const result = await s3.upload(uploadParams).promise();
+      const result = await upload.done();
       logger.info(`File uploaded successfully: ${key}`);
 
-      return result;
+      return {
+        Bucket: this.bucket,
+        Key: key,
+        Location: `https://${this.bucket}.s3.${config.aws.region}.amazonaws.com/${key}`,
+      };
     } catch (error) {
       logger.error(`Error uploading file to S3: ${key}`, error);
       throw new Error(
@@ -93,13 +108,12 @@ export class S3Service {
    */
   async getSignedUrl(key: string, expiresIn = 3600): Promise<string> {
     try {
-      const params = {
+      const command = new GetObjectCommand({
         Bucket: this.bucket,
         Key: key,
-        Expires: expiresIn,
-      };
+      });
 
-      const url = await s3.getSignedUrlPromise("getObject", params);
+      const url = await getSignedUrl(s3Client, command, { expiresIn });
       logger.debug(`Generated signed URL for: ${key}`);
 
       return url;
@@ -118,15 +132,15 @@ export class S3Service {
    * @param key - S3 key (path)
    * @returns Promise with deletion result
    */
-  async deleteFile(key: string): Promise<AWS.S3.DeleteObjectOutput> {
+  async deleteFile(key: string): Promise<any> {
     try {
-      const params = {
+      const command = new DeleteObjectCommand({
         Bucket: this.bucket,
         Key: key,
-      };
+      });
 
       logger.info(`Deleting file from S3: ${key}`);
-      const result = await s3.deleteObject(params).promise();
+      const result = await s3Client.send(command);
       logger.info(`File deleted successfully: ${key}`);
 
       return result;
@@ -147,16 +161,15 @@ export class S3Service {
    */
   async fileExists(key: string): Promise<boolean> {
     try {
-      await s3
-        .headObject({
-          Bucket: this.bucket,
-          Key: key,
-        })
-        .promise();
+      const command = new HeadObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+      });
 
+      await s3Client.send(command);
       return true;
     } catch (error: any) {
-      if (error.code === "NotFound" || error.code === "NoSuchKey") {
+      if (error.name === "NotFound" || error.name === "NoSuchKey") {
         return false;
       }
 
@@ -170,15 +183,14 @@ export class S3Service {
    * @param key - S3 key (path)
    * @returns File metadata
    */
-  async getFileMetadata(key: string): Promise<AWS.S3.HeadObjectOutput> {
+  async getFileMetadata(key: string): Promise<any> {
     try {
-      const result = await s3
-        .headObject({
-          Bucket: this.bucket,
-          Key: key,
-        })
-        .promise();
+      const command = new HeadObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+      });
 
+      const result = await s3Client.send(command);
       return result;
     } catch (error) {
       logger.error(`Error getting file metadata: ${key}`, error);
@@ -192,23 +204,20 @@ export class S3Service {
 
   /**
    * Copy a file within S3
-   * @param sourceKey - Source S3 key
-   * @param destinationKey - Destination S3 key
-   * @returns Copy result
+   * @param sourceKey - Source file key
+   * @param destinationKey - Destination file key
+   * @returns Promise with copy result
    */
-  async copyFile(
-    sourceKey: string,
-    destinationKey: string
-  ): Promise<AWS.S3.CopyObjectOutput> {
+  async copyFile(sourceKey: string, destinationKey: string): Promise<any> {
     try {
-      const copyParams = {
+      const command = new CopyObjectCommand({
         Bucket: this.bucket,
         CopySource: `${this.bucket}/${sourceKey}`,
         Key: destinationKey,
-      };
+      });
 
       logger.info(`Copying file in S3: ${sourceKey} -> ${destinationKey}`);
-      const result = await s3.copyObject(copyParams).promise();
+      const result = await s3Client.send(command);
       logger.info(
         `File copied successfully: ${sourceKey} -> ${destinationKey}`
       );
@@ -228,20 +237,20 @@ export class S3Service {
   }
 
   /**
-   * List files in a specific prefix (folder)
-   * @param prefix - S3 prefix to list
+   * List files in S3 with a given prefix
+   * @param prefix - Prefix to filter files
    * @param maxKeys - Maximum number of keys to return
    * @returns List of S3 objects
    */
-  async listFiles(prefix: string, maxKeys = 1000): Promise<AWS.S3.Object[]> {
+  async listFiles(prefix: string, maxKeys = 1000): Promise<any[]> {
     try {
-      const params = {
+      const command = new ListObjectsV2Command({
         Bucket: this.bucket,
         Prefix: prefix,
         MaxKeys: maxKeys,
-      };
+      });
 
-      const result = await s3.listObjectsV2(params).promise();
+      const result = await s3Client.send(command);
       return result.Contents || [];
     } catch (error) {
       logger.error(`Error listing files with prefix: ${prefix}`, error);
@@ -252,6 +261,42 @@ export class S3Service {
       );
     }
   }
+
+  /**
+   * Upload large files using streaming
+   */
+  async uploadLargeFile(
+    fileStream: Readable,
+    s3Key: string,
+    contentType: string,
+    originalName: string
+  ): Promise<{ Bucket: string; Key: string; Location: string }> {
+    try {
+      const upload = new Upload({
+        client: s3Client,
+        params: {
+          Bucket: this.bucket,
+          Key: s3Key,
+          Body: fileStream,
+          ContentType: contentType,
+          ContentDisposition: `attachment; filename="${originalName}"`,
+        },
+        queueSize: 4, // Number of concurrent uploads
+        partSize: 1024 * 1024 * 5, // 5MB chunks
+      });
+
+      await upload.done();
+
+      return {
+        Bucket: this.bucket,
+        Key: s3Key,
+        Location: `https://${this.bucket}.s3.${config.aws.region}.amazonaws.com/${s3Key}`,
+      };
+    } catch (error) {
+      logger.error("S3 large file upload error:", error);
+      throw new Error(`Failed to upload large file to S3: ${error}`);
+    }
+  }
 }
 
 // Create and export a singleton instance
@@ -260,7 +305,22 @@ export const s3Service = new S3Service();
 // Test S3 connection
 export const testS3Connection = async (): Promise<boolean> => {
   try {
-    await s3.headBucket({ Bucket: config.aws.s3Bucket }).promise();
+    const command = new HeadObjectCommand({
+      Bucket: config.aws.s3Bucket,
+      Key: "test-connection",
+    });
+
+    try {
+      await s3Client.send(command);
+    } catch (error: any) {
+      if (error.name === "NotFound" || error.name === "NoSuchKey") {
+        // This is expected for a test key, means bucket is accessible
+        logger.info("S3 connection successful - bucket accessible");
+        return true;
+      }
+      throw error;
+    }
+
     logger.info("S3 connection successful");
     return true;
   } catch (error) {

@@ -13,7 +13,6 @@ import {
   DocumentType,
 } from "../types";
 import logger from "../utils/logger";
-import path from "path";
 
 // Configure multer for memory storage (files will be handled in memory and uploaded to S3)
 const storage = multer.memoryStorage();
