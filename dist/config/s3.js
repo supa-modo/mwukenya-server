@@ -121,6 +121,38 @@ class S3Service {
             throw new Error(`Failed to get file metadata: ${error instanceof Error ? error.message : "Unknown error"}`);
         }
     }
+    async getFile(key) {
+        try {
+            const command = new client_s3_1.GetObjectCommand({
+                Bucket: this.bucket,
+                Key: key,
+            });
+            logger_1.default.info(`Getting file from S3: ${key}`);
+            const result = await s3Client.send(command);
+            if (!result.Body) {
+                logger_1.default.warn(`File body is empty: ${key}`);
+                return null;
+            }
+            const chunks = [];
+            const stream = result.Body;
+            return new Promise((resolve, reject) => {
+                stream.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+                stream.on("error", (error) => {
+                    logger_1.default.error(`Error reading file stream: ${key}`, error);
+                    reject(error);
+                });
+                stream.on("end", () => {
+                    const buffer = Buffer.concat(chunks);
+                    logger_1.default.info(`File retrieved successfully: ${key} (${buffer.length} bytes)`);
+                    resolve(buffer);
+                });
+            });
+        }
+        catch (error) {
+            logger_1.default.error(`Error getting file from S3: ${key}`, error);
+            return null;
+        }
+    }
     async copyFile(sourceKey, destinationKey) {
         try {
             const command = new client_s3_1.CopyObjectCommand({

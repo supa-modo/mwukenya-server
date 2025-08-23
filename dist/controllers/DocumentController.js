@@ -389,6 +389,122 @@ class DocumentController {
             });
         }
     }
+    async getAdminDocumentUrl(req, res) {
+        try {
+            const { documentId } = req.params;
+            const document = await models_1.Document.findByPk(documentId);
+            if (!document) {
+                res.status(404).json({
+                    success: false,
+                    error: {
+                        code: "DOC_005",
+                        message: "Document not found",
+                    },
+                    timestamp: new Date().toISOString(),
+                });
+                return;
+            }
+            const signedUrl = await s3_1.s3Service.getSignedUrl(document.s3Key, 3600);
+            res.status(200).json({
+                success: true,
+                data: {
+                    url: signedUrl,
+                    expiresIn: 3600,
+                },
+                message: "Document URL generated successfully",
+                timestamp: new Date().toISOString(),
+            });
+        }
+        catch (error) {
+            logger_1.default.error("Error generating admin document URL:", error);
+            res.status(500).json({
+                success: false,
+                error: {
+                    code: "DOC_014",
+                    message: "Failed to generate document URL",
+                },
+                timestamp: new Date().toISOString(),
+            });
+        }
+    }
+    async serveDocument(req, res) {
+        try {
+            const { documentId } = req.params;
+            const { download } = req.query;
+            const document = await models_1.Document.findByPk(documentId);
+            if (!document) {
+                res.status(404).json({
+                    success: false,
+                    error: {
+                        code: "DOC_005",
+                        message: "Document not found",
+                    },
+                    timestamp: new Date().toISOString(),
+                });
+                return;
+            }
+            const fileBuffer = await s3_1.s3Service.getFile(document.s3Key);
+            if (!fileBuffer) {
+                res.status(404).json({
+                    success: false,
+                    error: {
+                        code: "DOC_015",
+                        message: "File not found in storage",
+                    },
+                    timestamp: new Date().toISOString(),
+                });
+                return;
+            }
+            const fileName = document.fileName || `document-${documentId}`;
+            const contentType = this.getContentType(fileName);
+            res.set({
+                "Content-Type": contentType,
+                "Content-Length": fileBuffer.length,
+                "Cache-Control": "private, max-age=3600",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            });
+            if (download === "true") {
+                res.set("Content-Disposition", `attachment; filename="${fileName}"`);
+            }
+            else {
+                res.set("Content-Disposition", `inline; filename="${fileName}"`);
+            }
+            res.send(fileBuffer);
+        }
+        catch (error) {
+            logger_1.default.error("Error serving document:", error);
+            res.status(500).json({
+                success: false,
+                error: {
+                    code: "DOC_016",
+                    message: "Failed to serve document",
+                },
+                timestamp: new Date().toISOString(),
+            });
+        }
+    }
+    getContentType(fileName) {
+        const ext = fileName.toLowerCase().split(".").pop();
+        switch (ext) {
+            case "pdf":
+                return "application/pdf";
+            case "jpg":
+            case "jpeg":
+                return "image/jpeg";
+            case "png":
+                return "image/png";
+            case "gif":
+                return "image/gif";
+            case "doc":
+                return "application/msword";
+            case "docx":
+                return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+            default:
+                return "application/octet-stream";
+        }
+    }
 }
 exports.default = new DocumentController();
 //# sourceMappingURL=DocumentController.js.map

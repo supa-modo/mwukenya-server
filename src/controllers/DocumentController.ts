@@ -521,6 +521,157 @@ class DocumentController {
       } as ApiResponse);
     }
   }
+
+  /**
+   * Admin: Generate a signed URL for viewing/downloading any document
+   */
+  public getAdminDocumentUrl = async (
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> => {
+    try {
+      const { documentId } = req.params;
+
+      const document = await Document.findByPk(documentId);
+
+      if (!document) {
+        res.status(404).json({
+          success: false,
+          error: {
+            code: "DOC_005",
+            message: "Document not found",
+          },
+          timestamp: new Date().toISOString(),
+        } as ApiResponse);
+        return;
+      }
+
+      // Generate signed URL (valid for 1 hour)
+      const signedUrl = await s3Service.getSignedUrl(document.s3Key, 3600);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          url: signedUrl,
+          expiresIn: 3600, // seconds
+        },
+        message: "Document URL generated successfully",
+        timestamp: new Date().toISOString(),
+      } as ApiResponse);
+    } catch (error) {
+      logger.error("Error generating admin document URL:", error);
+
+      res.status(500).json({
+        success: false,
+        error: {
+          code: "DOC_014",
+          message: "Failed to generate document URL",
+        },
+        timestamp: new Date().toISOString(),
+      } as ApiResponse);
+    }
+  };
+
+  /**
+   * Admin: Serve document directly from S3 (bypasses CORS)
+   */
+  public serveDocument = async (
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> => {
+    try {
+      const { documentId } = req.params;
+      const { download } = req.query;
+
+      const document = await Document.findByPk(documentId);
+
+      if (!document) {
+        res.status(404).json({
+          success: false,
+          error: {
+            code: "DOC_005",
+            message: "Document not found",
+          },
+          timestamp: new Date().toISOString(),
+        } as ApiResponse);
+        return;
+      }
+
+      // Get the file from S3
+      const fileBuffer = await s3Service.getFile(document.s3Key);
+
+      if (!fileBuffer) {
+        res.status(404).json({
+          success: false,
+          error: {
+            code: "DOC_015",
+            message: "File not found in storage",
+          },
+          timestamp: new Date().toISOString(),
+        } as ApiResponse);
+        return;
+      }
+
+      // Set appropriate headers
+      const fileName = document.fileName || `document-${documentId}`;
+      const contentType = this.getContentType(fileName);
+
+      res.set({
+        "Content-Type": contentType,
+        "Content-Length": fileBuffer.length,
+        "Cache-Control": "private, max-age=3600",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      });
+
+      // If download is requested, set attachment header
+      if (download === "true") {
+        res.set("Content-Disposition", `attachment; filename="${fileName}"`);
+      } else {
+        res.set("Content-Disposition", `inline; filename="${fileName}"`);
+      }
+
+      // Send the file
+      res.send(fileBuffer);
+    } catch (error) {
+      logger.error("Error serving document:", error);
+
+      res.status(500).json({
+        success: false,
+        error: {
+          code: "DOC_016",
+          message: "Failed to serve document",
+        },
+        timestamp: new Date().toISOString(),
+      } as ApiResponse);
+    }
+  };
+
+  /**
+   * Helper method to determine content type from filename
+   */
+  private getContentType(fileName: string): string {
+    const ext = fileName.toLowerCase().split(".").pop();
+
+    switch (ext) {
+      case "pdf":
+        return "application/pdf";
+      case "jpg":
+      case "jpeg":
+        return "image/jpeg";
+      case "png":
+        return "image/png";
+      case "gif":
+        return "image/gif";
+      case "doc":
+        return "application/msword";
+      case "docx":
+        return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+      default:
+        return "application/octet-stream";
+    }
+  }
 }
 
 export default new DocumentController();

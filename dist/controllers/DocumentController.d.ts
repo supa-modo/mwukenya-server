@@ -11,6 +11,9 @@ declare class DocumentController {
     updateDocument(req: AuthenticatedRequest, res: Response): Promise<void>;
     getPendingDocuments(req: AuthenticatedRequest, res: Response): Promise<void>;
     verifyDocument(req: AuthenticatedRequest, res: Response): Promise<void>;
+    getAdminDocumentUrl(req: AuthenticatedRequest, res: Response): Promise<void>;
+    serveDocument(req: AuthenticatedRequest, res: Response): Promise<void>;
+    private getContentType;
 }
 declare const _default: DocumentController;
 export default _default;

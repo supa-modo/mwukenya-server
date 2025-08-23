@@ -12,6 +12,7 @@ export declare class S3Service {
     deleteFile(key: string): Promise<any>;
     fileExists(key: string): Promise<boolean>;
     getFileMetadata(key: string): Promise<any>;
+    getFile(key: string): Promise<Buffer | null>;
     copyFile(sourceKey: string, destinationKey: string): Promise<any>;
     listFiles(prefix: string, maxKeys?: number): Promise<any[]>;
     uploadLargeFile(fileStream: Readable, s3Key: string, contentType: string, originalName: string): Promise<{

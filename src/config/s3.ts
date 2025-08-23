@@ -203,6 +203,50 @@ export class S3Service {
   }
 
   /**
+   * Get file content from S3 as buffer
+   * @param key - S3 key (path)
+   * @returns File buffer
+   */
+  async getFile(key: string): Promise<Buffer | null> {
+    try {
+      const command = new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+      });
+
+      logger.info(`Getting file from S3: ${key}`);
+      const result = await s3Client.send(command);
+
+      if (!result.Body) {
+        logger.warn(`File body is empty: ${key}`);
+        return null;
+      }
+
+      // Convert stream to buffer
+      const chunks: Buffer[] = [];
+      const stream = result.Body as Readable;
+
+      return new Promise((resolve, reject) => {
+        stream.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+        stream.on("error", (error) => {
+          logger.error(`Error reading file stream: ${key}`, error);
+          reject(error);
+        });
+        stream.on("end", () => {
+          const buffer = Buffer.concat(chunks);
+          logger.info(
+            `File retrieved successfully: ${key} (${buffer.length} bytes)`
+          );
+          resolve(buffer);
+        });
+      });
+    } catch (error) {
+      logger.error(`Error getting file from S3: ${key}`, error);
+      return null;
+    }
+  }
+
+  /**
    * Copy a file within S3
    * @param sourceKey - Source file key
    * @param destinationKey - Destination file key

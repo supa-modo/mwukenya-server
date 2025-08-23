@@ -78,4 +78,26 @@ router.put(
   DocumentController.verifyDocument
 );
 
+/**
+ * @route GET /api/documents/admin/:documentId/url
+ * @desc Generate a signed URL for viewing/downloading any document (admin access)
+ * @access Admin only
+ */
+router.get(
+  "/admin/:documentId/url",
+  authorize([UserRole.ADMIN, UserRole.SUPERADMIN]),
+  DocumentController.getAdminDocumentUrl
+);
+
+/**
+ * @route GET /api/documents/admin/:documentId/serve
+ * @desc Serve document directly from server (bypasses CORS)
+ * @access Admin only
+ */
+router.get(
+  "/admin/:documentId/serve",
+  authorize([UserRole.ADMIN, UserRole.SUPERADMIN]),
+  DocumentController.serveDocument
+);
+
 export default router;

@@ -47,5 +47,7 @@ router.put("/:documentId", DocumentController_1.default.updateDocument);
 router.delete("/:documentId", DocumentController_1.default.deleteDocument);
 router.get("/admin/pending", (0, auth_1.authorize)([types_1.UserRole.ADMIN, types_1.UserRole.SUPERADMIN]), DocumentController_1.default.getPendingDocuments);
 router.put("/admin/:documentId/verify", (0, auth_1.authorize)([types_1.UserRole.ADMIN, types_1.UserRole.SUPERADMIN]), DocumentController_1.default.verifyDocument);
+router.get("/admin/:documentId/url", (0, auth_1.authorize)([types_1.UserRole.ADMIN, types_1.UserRole.SUPERADMIN]), DocumentController_1.default.getAdminDocumentUrl);
+router.get("/admin/:documentId/serve", (0, auth_1.authorize)([types_1.UserRole.ADMIN, types_1.UserRole.SUPERADMIN]), DocumentController_1.default.serveDocument);
 exports.default = router;
 //# sourceMappingURL=documents.js.map
