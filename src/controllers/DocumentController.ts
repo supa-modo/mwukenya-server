@@ -54,7 +54,7 @@ class DocumentController {
       const file = req.file;
       const userId = req.user!.id;
 
-       // Log authentication details for debugging
+      // Log authentication details for debugging
       logger.info(
         `Document upload attempt - User ID: ${userId}, User object:`,
         req.user
