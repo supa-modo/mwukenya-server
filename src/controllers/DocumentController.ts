@@ -54,6 +54,13 @@ class DocumentController {
       const file = req.file;
       const userId = req.user!.id;
 
+       // Log authentication details for debugging
+      logger.info(
+        `Document upload attempt - User ID: ${userId}, User object:`,
+        req.user
+      );
+      logger.info(`Request headers:`, req.headers);
+
       // Validate required fields
       if (!name || !type || !file) {
         res.status(400).json({
@@ -80,6 +87,33 @@ class DocumentController {
         } as ApiResponse);
         return;
       }
+
+      // Verify user exists in database before proceeding
+      const User = require("../models").User;
+      logger.info(`Checking if user exists in database: ${userId}`);
+
+      const userExists = await User.findByPk(userId);
+      if (!userExists) {
+        logger.error(`User not found for document upload: ${userId}`);
+        logger.error(
+          `Available users in database:`,
+          await User.findAll({ attributes: ["id", "email", "name"] })
+        );
+
+        res.status(404).json({
+          success: false,
+          error: {
+            code: "DOC_017",
+            message: "User not found. Please log in again.",
+          },
+          timestamp: new Date().toISOString(),
+        } as ApiResponse);
+        return;
+      }
+
+      logger.info(
+        `User verified successfully: ${userId} - ${userExists.email}`
+      );
 
       // Generate S3 key
       const fileExtension = getFileExtensionFromMimeType(file.mimetype);
