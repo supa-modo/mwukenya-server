@@ -190,10 +190,12 @@ export const config = {
 
   // AWS configuration
   aws: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
-    region: process.env.AWS_REGION || "us-east-1",
-    s3Bucket: process.env.AWS_S3_BUCKET || "mwu-kenya-documents",
+    // In production (EC2), credentials are automatically provided by instance metadata service
+    // In development, explicit credentials are required
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    region: process.env.AWS_REGION || "af-south-1", // Default to your region
+    s3Bucket: process.env.AWS_S3_BUCKET || "mwukenya-bucket",
   },
 
   // USSD configuration

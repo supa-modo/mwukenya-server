@@ -17,11 +17,29 @@ import { v4 as uuidv4 } from "uuid";
 // Create S3 client with AWS SDK v3
 const s3Client = new S3Client({
   region: config.aws.region,
-  credentials: {
-    accessKeyId: config.aws.accessKeyId,
-    secretAccessKey: config.aws.secretAccessKey,
-  },
+  ...(config.aws.accessKeyId &&
+    config.aws.secretAccessKey && {
+      credentials: {
+        accessKeyId: config.aws.accessKeyId,
+        secretAccessKey: config.aws.secretAccessKey,
+      },
+    }),
 });
+
+// Validate S3 configuration
+if (process.env.NODE_ENV === "development") {
+  if (!config.aws.accessKeyId || !config.aws.secretAccessKey) {
+    throw new Error(
+      "AWS credentials are required in development mode. Please set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables."
+    );
+  }
+}
+
+if (!config.aws.region || !config.aws.s3Bucket) {
+  throw new Error(
+    "AWS region and S3 bucket are required. Please set AWS_REGION and AWS_S3_BUCKET environment variables."
+  );
+}
 
 // S3 Service class
 export class S3Service {
