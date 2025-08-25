@@ -27,7 +27,7 @@ class SMSService {
             const apiKey = mode === "sandbox"
                 ? process.env.AFRICAS_TALKING_SANDBOX_API_KEY
                 : process.env.AFRICAS_TALKING_API_KEY;
-            const username = mode === "sandbox" ? "sandbox" : process.env.AFRICAS_TALKING_USERNAME;
+            const username = process.env.AFRICAS_TALKING_USERNAME || "sandbox";
             const senderId = process.env.AFRICAS_TALKING_SENDER_ID || "";
             if (!apiKey || !username) {
                 logger_1.default.warn(`Africa's Talking SMS service not configured - missing API key or username for ${mode} mode`);
@@ -40,9 +40,18 @@ class SMSService {
                 senderId,
             };
             this.isConfigured = true;
+            console.log("🔍 SMS Service Configuration Debug:");
+            console.log("  Mode:", mode);
+            console.log("  Username:", username);
+            console.log("APIKEY", apiKey);
+            console.log("  API Key Length:", apiKey ? apiKey.length : 0);
+            console.log("  Sender ID:", senderId);
+            console.log("  API Key (first 20 chars):", apiKey ? apiKey.substring(0, 20) + "..." : "undefined");
             logger_1.default.info(`SMS service initialized in ${mode.toUpperCase()} mode with Africa's Talking`, {
                 username,
-                senderId: senderId || "Not configured (will use default)",
+                senderId: "",
+                apiKeyLength: apiKey ? apiKey.length : 0,
+                mode,
             });
         }
         catch (error) {
@@ -131,11 +140,21 @@ class SMSService {
             else {
                 logger_1.default.info("Sending SMS without sender ID (will use Africa's Talking default)");
             }
+            console.log("🔍 SMS API Request Debug:");
+            console.log("  URL:", apiUrl);
+            console.log("  Username:", this.africasTalkingConfig.username);
+            console.log("  API Key (first 20 chars):", this.africasTalkingConfig.apiKey
+                ? this.africasTalkingConfig.apiKey.substring(0, 20) + "..."
+                : "undefined");
+            console.log("  Request Body:", JSON.stringify(requestBody, null, 2));
             logger_1.default.info(`Sending SMS to ${phoneNumber} via Africa's Talking API`, {
                 url: apiUrl,
                 username: this.africasTalkingConfig.username,
                 hasSenderId: !!requestBody.from,
                 mode: this.currentMode,
+                apiKeyLength: this.africasTalkingConfig.apiKey
+                    ? this.africasTalkingConfig.apiKey.length
+                    : 0,
             });
             const response = await fetch(apiUrl, {
                 method: "POST",
@@ -278,7 +297,7 @@ class SMSService {
             };
         }
         try {
-            const testPhone = "+254700000000";
+            const testPhone = "+254790193402";
             const testMessage = "MWU Kenya SMS Service Test - " + new Date().toISOString();
             const success = await this.sendCustomSMS(testPhone, testMessage);
             return {

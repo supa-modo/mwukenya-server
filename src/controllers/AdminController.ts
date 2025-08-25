@@ -75,6 +75,52 @@ export class AdminController {
         offset: offset,
       });
 
+      // Add delegate and member counts for coordinators and delegates
+      const usersWithCounts = await Promise.all(
+        users.map(async (user) => {
+          const userData = user.toJSON();
+
+          if (user.role === UserRole.COORDINATOR) {
+            // Count delegates under this coordinator
+            const delegateCount = await User.count({
+              where: {
+                role: UserRole.DELEGATE,
+                coordinatorId: user.id,
+              },
+            });
+
+            // Count total members under this coordinator's delegates
+            const memberCount = await User.count({
+              where: {
+                role: UserRole.MEMBER,
+                coordinatorId: user.id,
+              },
+            });
+
+            return {
+              ...userData,
+              delegateCount,
+              memberCount,
+            };
+          } else if (user.role === UserRole.DELEGATE) {
+            // Count members under this delegate
+            const memberCount = await User.count({
+              where: {
+                role: UserRole.MEMBER,
+                delegateId: user.id,
+              },
+            });
+
+            return {
+              ...userData,
+              memberCount,
+            };
+          }
+
+          return userData;
+        })
+      );
+
       // Calculate pagination info
       const totalPages = Math.ceil(count / limitNumber);
       const hasNextPage = pageNumber < totalPages;
@@ -83,7 +129,7 @@ export class AdminController {
       res.status(200).json({
         success: true,
         data: {
-          users,
+          users: usersWithCounts,
           pagination: {
             currentPage: pageNumber,
             totalPages,

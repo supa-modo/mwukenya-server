@@ -47,13 +47,48 @@ class AdminController {
                 limit: limitNumber,
                 offset: offset,
             });
+            const usersWithCounts = await Promise.all(users.map(async (user) => {
+                const userData = user.toJSON();
+                if (user.role === types_1.UserRole.COORDINATOR) {
+                    const delegateCount = await models_1.User.count({
+                        where: {
+                            role: types_1.UserRole.DELEGATE,
+                            coordinatorId: user.id,
+                        },
+                    });
+                    const memberCount = await models_1.User.count({
+                        where: {
+                            role: types_1.UserRole.MEMBER,
+                            coordinatorId: user.id,
+                        },
+                    });
+                    return {
+                        ...userData,
+                        delegateCount,
+                        memberCount,
+                    };
+                }
+                else if (user.role === types_1.UserRole.DELEGATE) {
+                    const memberCount = await models_1.User.count({
+                        where: {
+                            role: types_1.UserRole.MEMBER,
+                            delegateId: user.id,
+                        },
+                    });
+                    return {
+                        ...userData,
+                        memberCount,
+                    };
+                }
+                return userData;
+            }));
             const totalPages = Math.ceil(count / limitNumber);
             const hasNextPage = pageNumber < totalPages;
             const hasPrevPage = pageNumber > 1;
             res.status(200).json({
                 success: true,
                 data: {
-                    users,
+                    users: usersWithCounts,
                     pagination: {
                         currentPage: pageNumber,
                         totalPages,
