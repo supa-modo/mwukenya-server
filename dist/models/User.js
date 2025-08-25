@@ -184,6 +184,7 @@ User.init({
         unique: true,
         validate: {
             isEmail: true,
+            notEmpty: false,
         },
     },
     phoneNumber: {

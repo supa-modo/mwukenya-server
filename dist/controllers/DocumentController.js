@@ -26,11 +26,111 @@ exports.upload = (0, multer_1.default)({
     },
 });
 class DocumentController {
+    constructor() {
+        this.getAdminDocumentUrl = async (req, res) => {
+            try {
+                const { documentId } = req.params;
+                const document = await models_1.Document.findByPk(documentId);
+                if (!document) {
+                    res.status(404).json({
+                        success: false,
+                        error: {
+                            code: "DOC_005",
+                            message: "Document not found",
+                        },
+                        timestamp: new Date().toISOString(),
+                    });
+                    return;
+                }
+                const signedUrl = await s3_1.s3Service.getSignedUrl(document.s3Key, 3600);
+                res.status(200).json({
+                    success: true,
+                    data: {
+                        url: signedUrl,
+                        expiresIn: 3600,
+                    },
+                    message: "Document URL generated successfully",
+                    timestamp: new Date().toISOString(),
+                });
+            }
+            catch (error) {
+                logger_1.default.error("Error generating admin document URL:", error);
+                res.status(500).json({
+                    success: false,
+                    error: {
+                        code: "DOC_014",
+                        message: "Failed to generate document URL",
+                    },
+                    timestamp: new Date().toISOString(),
+                });
+            }
+        };
+        this.serveDocument = async (req, res) => {
+            try {
+                const { documentId } = req.params;
+                const { download } = req.query;
+                const document = await models_1.Document.findByPk(documentId);
+                if (!document) {
+                    res.status(404).json({
+                        success: false,
+                        error: {
+                            code: "DOC_005",
+                            message: "Document not found",
+                        },
+                        timestamp: new Date().toISOString(),
+                    });
+                    return;
+                }
+                const fileBuffer = await s3_1.s3Service.getFile(document.s3Key);
+                if (!fileBuffer) {
+                    res.status(404).json({
+                        success: false,
+                        error: {
+                            code: "DOC_015",
+                            message: "File not found in storage",
+                        },
+                        timestamp: new Date().toISOString(),
+                    });
+                    return;
+                }
+                const fileName = document.fileName || `document-${documentId}`;
+                const contentType = this.getContentType(fileName);
+                res.set({
+                    "Content-Type": contentType,
+                    "Content-Length": fileBuffer.length,
+                    "Cache-Control": "private, max-age=3600",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET, OPTIONS",
+                    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+                });
+                if (download === "true") {
+                    res.set("Content-Disposition", `attachment; filename="${fileName}"`);
+                }
+                else {
+                    res.set("Content-Disposition", `inline; filename="${fileName}"`);
+                }
+                res.send(fileBuffer);
+            }
+            catch (error) {
+                logger_1.default.error("Error serving document:", error);
+                res.status(500).json({
+                    success: false,
+                    error: {
+                        code: "DOC_016",
+                        message: "Failed to serve document",
+                    },
+                    timestamp: new Date().toISOString(),
+                });
+            }
+        };
+    }
     async uploadDocument(req, res) {
         try {
             const { name, type, description } = req.body;
             const file = req.file;
             const userId = req.user.id;
+            logger_1.default.info(`Document upload attempt - User ID: ${userId}, User object:`, req.user);
+            logger_1.default.info(`Request headers:`, req.headers);
             if (!name || !type || !file) {
                 res.status(400).json({
                     success: false,
@@ -53,6 +153,23 @@ class DocumentController {
                 });
                 return;
             }
+            const User = require("../models").User;
+            logger_1.default.info(`Checking if user exists in database: ${userId}`);
+            const userExists = await User.findByPk(userId);
+            if (!userExists) {
+                logger_1.default.error(`User not found for document upload: ${userId}`);
+                logger_1.default.error(`Available users in database:`, await User.findAll({ attributes: ["id", "email", "name"] }));
+                res.status(404).json({
+                    success: false,
+                    error: {
+                        code: "DOC_017",
+                        message: "User not found. Please log in again.",
+                    },
+                    timestamp: new Date().toISOString(),
+                });
+                return;
+            }
+            logger_1.default.info(`User verified successfully: ${userId} - ${userExists.email}`);
             const fileExtension = (0, s3_1.getFileExtensionFromMimeType)(file.mimetype);
             const s3Key = s3_1.s3Service.generateS3Key(userId, fileExtension, "documents");
             const uploadResult = await s3_1.s3Service.uploadFile(file.buffer, s3Key, file.mimetype, file.originalname);
@@ -384,102 +501,6 @@ class DocumentController {
                 error: {
                     code: "DOC_013",
                     message: "Failed to verify document",
-                },
-                timestamp: new Date().toISOString(),
-            });
-        }
-    }
-    async getAdminDocumentUrl(req, res) {
-        try {
-            const { documentId } = req.params;
-            const document = await models_1.Document.findByPk(documentId);
-            if (!document) {
-                res.status(404).json({
-                    success: false,
-                    error: {
-                        code: "DOC_005",
-                        message: "Document not found",
-                    },
-                    timestamp: new Date().toISOString(),
-                });
-                return;
-            }
-            const signedUrl = await s3_1.s3Service.getSignedUrl(document.s3Key, 3600);
-            res.status(200).json({
-                success: true,
-                data: {
-                    url: signedUrl,
-                    expiresIn: 3600,
-                },
-                message: "Document URL generated successfully",
-                timestamp: new Date().toISOString(),
-            });
-        }
-        catch (error) {
-            logger_1.default.error("Error generating admin document URL:", error);
-            res.status(500).json({
-                success: false,
-                error: {
-                    code: "DOC_014",
-                    message: "Failed to generate document URL",
-                },
-                timestamp: new Date().toISOString(),
-            });
-        }
-    }
-    async serveDocument(req, res) {
-        try {
-            const { documentId } = req.params;
-            const { download } = req.query;
-            const document = await models_1.Document.findByPk(documentId);
-            if (!document) {
-                res.status(404).json({
-                    success: false,
-                    error: {
-                        code: "DOC_005",
-                        message: "Document not found",
-                    },
-                    timestamp: new Date().toISOString(),
-                });
-                return;
-            }
-            const fileBuffer = await s3_1.s3Service.getFile(document.s3Key);
-            if (!fileBuffer) {
-                res.status(404).json({
-                    success: false,
-                    error: {
-                        code: "DOC_015",
-                        message: "File not found in storage",
-                    },
-                    timestamp: new Date().toISOString(),
-                });
-                return;
-            }
-            const fileName = document.fileName || `document-${documentId}`;
-            const contentType = this.getContentType(fileName);
-            res.set({
-                "Content-Type": contentType,
-                "Content-Length": fileBuffer.length,
-                "Cache-Control": "private, max-age=3600",
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "GET, OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type, Authorization",
-            });
-            if (download === "true") {
-                res.set("Content-Disposition", `attachment; filename="${fileName}"`);
-            }
-            else {
-                res.set("Content-Disposition", `inline; filename="${fileName}"`);
-            }
-            res.send(fileBuffer);
-        }
-        catch (error) {
-            logger_1.default.error("Error serving document:", error);
-            res.status(500).json({
-                success: false,
-                error: {
-                    code: "DOC_016",
-                    message: "Failed to serve document",
                 },
                 timestamp: new Date().toISOString(),
             });

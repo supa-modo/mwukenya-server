@@ -1,28 +1,28 @@
-type EmailMode = "smtp" | "zoho";
+type EmailMode = "smtp" | "zeptomail";
 declare class EmailService {
     private smtpTransporter;
-    private zohoConfig;
+    private zeptoMailTransporter;
     private currentMode;
     private isConfigured;
-    private zohoAccessToken;
-    private zohoTokenExpiry;
+    private zeptoMailConfig;
     constructor();
     private initializeService;
     private initializeSmtpService;
-    private initializeZohoService;
-    private getZohoAccessToken;
-    private sendEmailViaZoho;
+    private initializeZeptoMailService;
+    private sendEmailViaZeptoMail;
     private sendEmailViaSmtp;
     sendPasswordResetEmail(email: string, resetToken: string, firstName: string): Promise<boolean>;
     sendEmail(to: string, subject: string, htmlContent: string): Promise<boolean>;
+    sendWelcomeEmail(email: string, firstName: string, lastName: string, membershipNumber: string): Promise<boolean>;
     private generatePasswordResetEmailTemplate;
+    private generateWelcomeEmailTemplate;
     isEmailConfigured(): boolean;
     getCurrentMode(): EmailMode;
     getServiceStatus(): {
         configured: boolean;
         mode: EmailMode;
         smtpConfigured: boolean;
-        zohoConfigured: boolean;
+        zeptoMailConfigured: boolean;
     };
 }
 export declare const emailService: EmailService;

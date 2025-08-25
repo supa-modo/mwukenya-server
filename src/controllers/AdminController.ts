@@ -215,6 +215,14 @@ export class AdminController {
         where: { isActive: true },
       });
 
+      // Get pending verifications count
+      const pendingVerifications = await User.count({
+        where: {
+          role: "member",
+          membershipStatus: "pending",
+        },
+      });
+
       res.status(200).json({
         success: true,
         data: {
@@ -229,6 +237,7 @@ export class AdminController {
           medicalSchemes: {
             active: activeMedicalSchemes,
           },
+          pendingVerifications,
         },
         message: "Dashboard statistics retrieved successfully",
         timestamp: new Date().toISOString(),

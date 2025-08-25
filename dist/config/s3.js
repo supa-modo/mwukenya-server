@@ -12,11 +12,22 @@ const logger_1 = __importDefault(require("../utils/logger"));
 const uuid_1 = require("uuid");
 const s3Client = new client_s3_1.S3Client({
     region: index_1.config.aws.region,
-    credentials: {
-        accessKeyId: index_1.config.aws.accessKeyId,
-        secretAccessKey: index_1.config.aws.secretAccessKey,
-    },
+    ...(index_1.config.aws.accessKeyId &&
+        index_1.config.aws.secretAccessKey && {
+        credentials: {
+            accessKeyId: index_1.config.aws.accessKeyId,
+            secretAccessKey: index_1.config.aws.secretAccessKey,
+        },
+    }),
 });
+if (process.env.NODE_ENV === "development") {
+    if (!index_1.config.aws.accessKeyId || !index_1.config.aws.secretAccessKey) {
+        throw new Error("AWS credentials are required in development mode. Please set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables.");
+    }
+}
+if (!index_1.config.aws.region || !index_1.config.aws.s3Bucket) {
+    throw new Error("AWS region and S3 bucket are required. Please set AWS_REGION and AWS_S3_BUCKET environment variables.");
+}
 class S3Service {
     constructor() {
         this.bucket = index_1.config.aws.s3Bucket;

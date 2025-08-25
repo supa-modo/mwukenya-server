@@ -157,6 +157,12 @@ class AdminController {
             const activeMedicalSchemes = await models_1.MedicalScheme.count({
                 where: { isActive: true },
             });
+            const pendingVerifications = await models_1.User.count({
+                where: {
+                    role: "member",
+                    membershipStatus: "pending",
+                },
+            });
             res.status(200).json({
                 success: true,
                 data: {
@@ -171,6 +177,7 @@ class AdminController {
                     medicalSchemes: {
                         active: activeMedicalSchemes,
                     },
+                    pendingVerifications,
                 },
                 message: "Dashboard statistics retrieved successfully",
                 timestamp: new Date().toISOString(),

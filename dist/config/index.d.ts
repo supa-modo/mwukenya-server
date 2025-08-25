@@ -59,8 +59,8 @@ export declare const config: {
         uploadPath: string;
     };
     aws: {
-        accessKeyId: string;
-        secretAccessKey: string;
+        accessKeyId: string | undefined;
+        secretAccessKey: string | undefined;
         region: string;
         s3Bucket: string;
     };

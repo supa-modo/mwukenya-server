@@ -289,6 +289,7 @@ User.init(
       unique: true,
       validate: {
         isEmail: true,
+        notEmpty: false, // Allow empty for users without email
       },
     },
     phoneNumber: {

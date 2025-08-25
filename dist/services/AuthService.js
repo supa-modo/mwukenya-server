@@ -395,17 +395,22 @@ class AuthService {
             const passwordHash = await models_1.User.hashPassword(userData.password);
             let delegateId;
             let coordinatorId;
+            let delegate = null;
+            let coordinator = null;
             if (userData.role === types_1.UserRole.MEMBER && userData.delegateCode) {
-                const delegate = await models_1.User.findByDelegateCode(userData.delegateCode);
+                delegate = await models_1.User.findByDelegateCode(userData.delegateCode);
                 if (!delegate) {
                     throw apiError_1.ApiError.invalidDelegateCode();
                 }
                 delegateId = delegate.id;
                 coordinatorId = delegate.coordinatorId;
+                if (coordinatorId) {
+                    coordinator = await models_1.User.findByPk(coordinatorId);
+                }
             }
             else if (userData.role === types_1.UserRole.DELEGATE &&
                 userData.coordinatorCode) {
-                const coordinator = await models_1.User.findByCoordinatorCode(userData.coordinatorCode);
+                coordinator = await models_1.User.findByCoordinatorCode(userData.coordinatorCode);
                 if (!coordinator) {
                     throw new apiError_1.ApiError("Invalid coordinator code", "BUS_002", 400);
                 }
@@ -437,7 +442,59 @@ class AuthService {
             (0, logger_1.auditLogger)("USER_REGISTRATION", user.id, {
                 role: userData.role,
                 registeredBy,
+                membershipNumber: user.membershipNumber,
             });
+            try {
+                if (userData.role === types_1.UserRole.MEMBER &&
+                    delegate &&
+                    user.membershipNumber) {
+                    const smsSent = await smsService_1.smsService.sendRegistrationSuccessSMS(userData.phoneNumber, {
+                        firstName: userData.firstName,
+                        lastName: userData.lastName,
+                        idNumber: userData.idNumber,
+                        membershipNumber: user.membershipNumber,
+                        sacco: userData.sacco || "N/A",
+                        delegateName: delegate.fullName,
+                        delegateCode: userData.delegateCode,
+                        role: userData.role,
+                    });
+                    if (smsSent) {
+                        logger_1.default.info(`Registration success SMS sent to ${userData.phoneNumber}`);
+                    }
+                    else {
+                        logger_1.default.warn(`Failed to send registration success SMS to ${userData.phoneNumber}`);
+                    }
+                    const welcomeSmsSent = await smsService_1.smsService.sendWelcomeSMS(userData.phoneNumber, {
+                        firstName: userData.firstName,
+                        lastName: userData.lastName,
+                        membershipNumber: user.membershipNumber,
+                        sacco: userData.sacco || "N/A",
+                    });
+                    if (welcomeSmsSent) {
+                        logger_1.default.info(`Welcome SMS sent to ${userData.phoneNumber}`);
+                    }
+                    else {
+                        logger_1.default.warn(`Failed to send welcome SMS to ${userData.phoneNumber}`);
+                    }
+                }
+            }
+            catch (smsError) {
+                logger_1.default.error("SMS notification failed during registration:", smsError);
+            }
+            try {
+                if (userData.email && user.membershipNumber) {
+                    const emailSent = await emailService_1.emailService.sendWelcomeEmail(userData.email, userData.firstName, userData.lastName, user.membershipNumber);
+                    if (emailSent) {
+                        logger_1.default.info(`Welcome email sent to ${userData.email}`);
+                    }
+                    else {
+                        logger_1.default.warn(`Failed to send welcome email to ${userData.email}`);
+                    }
+                }
+            }
+            catch (emailError) {
+                logger_1.default.error("Email notification failed during registration:", emailError);
+            }
             const userResponse = user.toJSON();
             const requiresApproval = userData.role === types_1.UserRole.MEMBER;
             return {

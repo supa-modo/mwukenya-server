@@ -7,8 +7,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const emailService_1 = require("../utils/emailService");
 const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config();
-async function testZohoEmailService() {
-    console.log("🧪 Testing Zoho Email Service...\n");
+async function testEmailService() {
+    console.log("🧪 Testing Email Service (ZeptoMail/SMTP)...\n");
     const status = emailService_1.emailService.getServiceStatus();
     console.log("📊 Service Status:");
     console.log(JSON.stringify(status, null, 2));
@@ -21,36 +21,29 @@ async function testZohoEmailService() {
         console.log("Please check your environment variables.");
         return;
     }
-    if (mode === "zoho") {
-        console.log("✅ Zoho Mail API mode detected");
-        console.log("📧 Testing email sending...");
-        try {
-            const testEmail = process.env.TEST_EMAIL || "test@example.com";
-            const result = await emailService_1.emailService.sendEmail(testEmail, "Test Email - Zoho Integration", `
-        <h2>Test Email</h2>
-        <p>This is a test email to verify Zoho Mail API integration.</p>
-        <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
-        <p><strong>Service Mode:</strong> ${mode}</p>
-        <hr>
-        <p><em>If you receive this email, the Zoho integration is working correctly!</em></p>
-        `);
-            if (result) {
-                console.log("✅ Test email sent successfully!");
-                console.log(`📬 Sent to: ${testEmail}`);
-            }
-            else {
-                console.log("❌ Failed to send test email");
-            }
+    const testEmail = process.env.TEST_EMAIL || "eddyodhiambo@vukawifi.online";
+    if (mode === "zeptomail") {
+        console.log("Testing ZeptoMail email service...");
+        const emailSent = await emailService_1.emailService.sendEmail(testEmail, "Test Email from MWU Kenya", "<h1>Test Email</h1><p>This is a test email sent via ZeptoMail.</p>");
+        if (emailSent) {
+            console.log("✅ ZeptoMail test email sent successfully!");
         }
-        catch (error) {
-            console.log("❌ Error sending test email:", error);
+        else {
+            console.log("❌ Failed to send ZeptoMail test email");
         }
     }
     else {
-        console.log("ℹ️  SMTP mode detected - Zoho integration not active");
-        console.log("To test Zoho integration, set EMAIL_MODE=zoho in your .env file");
+        console.log("Testing SMTP email service...");
+        const emailSent = await emailService_1.emailService.sendEmail(testEmail, "Test Email from MWU Kenya", "<h1>Test Email</h1><p>This is a test email sent via SMTP.</p>");
+        if (emailSent) {
+            console.log("✅ SMTP test email sent successfully!");
+        }
+        else {
+            console.log("❌ Failed to send SMTP test email");
+        }
     }
-    console.log("\n🏁 Test completed!");
+    console.log("\n📧 Email service test completed!");
+    console.log("To test ZeptoMail integration, set EMAIL_MODE=zeptomail in your .env file");
 }
-testZohoEmailService().catch(console.error);
+testEmailService().catch(console.error);
 //# sourceMappingURL=test-zoho-email.js.map
