@@ -483,7 +483,15 @@ class AuthService {
             }
             try {
                 if (userData.email && user.membershipNumber) {
-                    const emailSent = await emailService_1.emailService.sendWelcomeEmail(userData.email, userData.firstName, userData.lastName, user.membershipNumber);
+                    let delegateInfo = undefined;
+                    if (delegate && userData.role === types_1.UserRole.MEMBER) {
+                        delegateInfo = {
+                            delegateName: delegate.fullName,
+                            delegateContact: delegate.phoneNumber,
+                            delegateCode: userData.delegateCode,
+                        };
+                    }
+                    const emailSent = await emailService_1.emailService.sendWelcomeEmail(userData.email, userData.firstName, userData.lastName, user.membershipNumber, delegateInfo);
                     if (emailSent) {
                         logger_1.default.info(`Welcome email sent to ${userData.email}`);
                     }

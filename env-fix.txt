@@ -1,0 +1,11 @@
+# Fix for SMS Service Configuration
+# Copy these lines to your .env file, replacing the broken ones:
+
+# SMS Service Configuration
+SMS_MODE=sandbox
+AFRICAS_TALKING_SANDBOX_API_KEY=atsk_e8d205083723774b20ed654413490a243494e763c2719fb8157cdf8d833fd876880b8a92
+AFRICAS_TALKING_USERNAME=sandbox
+AFRICAS_TALKING_SENDER_ID=
+
+# Note: The original API key was broken across multiple lines
+# Make sure there are no line breaks in the API key value

@@ -645,11 +645,22 @@ export class AuthService {
       // Send welcome email if user has an email address
       try {
         if (userData.email && user.membershipNumber) {
+          // Prepare delegate information for the welcome email
+          let delegateInfo = undefined;
+          if (delegate && userData.role === UserRole.MEMBER) {
+            delegateInfo = {
+              delegateName: delegate.fullName,
+              delegateContact: delegate.phoneNumber,
+              delegateCode: userData.delegateCode,
+            };
+          }
+
           const emailSent = await emailService.sendWelcomeEmail(
             userData.email,
             userData.firstName,
             userData.lastName,
-            user.membershipNumber
+            user.membershipNumber,
+            delegateInfo
           );
 
           if (emailSent) {

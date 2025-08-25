@@ -21,7 +21,7 @@ async function testEmailService() {
         console.log("Please check your environment variables.");
         return;
     }
-    const testEmail = process.env.TEST_EMAIL || "eddyodhiambo@vukawifi.online";
+    const testEmail = process.env.TEST_EMAIL || "eddie.oodhiambo@gmail.com";
     if (mode === "zeptomail") {
         console.log("Testing ZeptoMail email service...");
         const emailSent = await emailService_1.emailService.sendEmail(testEmail, "Test Email from MWU Kenya", "<h1>Test Email</h1><p>This is a test email sent via ZeptoMail.</p>");

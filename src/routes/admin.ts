@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { AdminController } from "../controllers/AdminController";
 import { authenticate } from "../middleware/auth";
+import { emailService } from "../utils/emailService";
 
 const router = Router();
 

@@ -50,27 +50,42 @@ class EmailService {
     }
     initializeZeptoMailService() {
         try {
+            const apiKey = process.env.ZEPTOMAIL_API_KEY;
+            const fromEmail = process.env.ZEPTOMAIL_FROM_EMAIL;
+            if (!apiKey) {
+                logger_1.default.warn("ZeptoMail service not configured - missing ZEPTOMAIL_API_KEY");
+                return;
+            }
+            if (!fromEmail) {
+                logger_1.default.warn("ZeptoMail service not configured - missing ZEPTOMAIL_FROM_EMAIL");
+                return;
+            }
             const config = {
                 host: "smtp.zeptomail.com",
                 port: 587,
                 secure: false,
                 auth: {
                     user: "emailapikey",
-                    pass: process.env.ZEPTOMAIL_API_KEY || "",
+                    pass: apiKey,
                 },
-                fromEmail: process.env.ZEPTOMAIL_FROM_EMAIL || "noreply@mwukenya.co.ke",
+                fromEmail: fromEmail,
             };
-            if (!config.auth.pass) {
-                logger_1.default.warn("ZeptoMail service not configured - missing ZEPTOMAIL_API_KEY");
-                return;
-            }
             this.zeptoMailTransporter = nodemailer_1.default.createTransport(config);
             this.zeptoMailConfig = config;
             this.isConfigured = true;
-            logger_1.default.info("ZeptoMail email service initialized successfully");
+            this.zeptoMailTransporter.verify((error, success) => {
+                if (error) {
+                    logger_1.default.error("ZeptoMail connection test failed:", error);
+                    this.isConfigured = false;
+                }
+                else {
+                    logger_1.default.info("ZeptoMail email service initialized and verified successfully");
+                }
+            });
         }
         catch (error) {
             logger_1.default.error("Failed to initialize ZeptoMail email service:", error);
+            this.isConfigured = false;
         }
     }
     async sendEmailViaZeptoMail(to, subject, htmlContent) {
@@ -125,8 +140,7 @@ class EmailService {
     }
     async sendPasswordResetEmail(email, resetToken, firstName) {
         const resetUrl = `${process.env.FRONTEND_URL || "http://localhost:5173"}/reset-password/${resetToken}`;
-        if (process.env.NODE_ENV === "development" ||
-            !process.env.NODE_ENV) {
+        if (process.env.NODE_ENV === "development" || !process.env.NODE_ENV) {
             const logMessage = [
                 "=".repeat(80),
                 "📧 PASSWORD RESET EMAIL (DEVELOPMENT MODE)",
@@ -141,24 +155,39 @@ class EmailService {
                 `Link: ${resetUrl}`,
                 `⚠️  Link expires in 10 minutes`,
                 `Mode: ${this.currentMode.toUpperCase()}`,
+                `Service Configured: ${this.isConfigured}`,
                 "=".repeat(80),
             ].join("\n");
             console.log(logMessage);
             logger_1.default.info(logMessage);
-            return true;
         }
         if (!this.isConfigured) {
-            logger_1.default.warn("Email service not configured");
+            logger_1.default.error("Email service not configured - cannot send password reset email");
             return false;
         }
         const subject = "Password Reset Request - MWU Kenya";
         const htmlContent = this.generatePasswordResetEmailTemplate(firstName, resetUrl);
         try {
+            logger_1.default.info(`Attempting to send password reset email to ${email} via ${this.currentMode}`);
             if (this.currentMode === "zeptomail") {
-                return await this.sendEmailViaZeptoMail(email, subject, htmlContent);
+                const result = await this.sendEmailViaZeptoMail(email, subject, htmlContent);
+                if (result) {
+                    logger_1.default.info(`Password reset email sent successfully via ZeptoMail to ${email}`);
+                }
+                else {
+                    logger_1.default.error(`Failed to send password reset email via ZeptoMail to ${email}`);
+                }
+                return result;
             }
             else {
-                return await this.sendEmailViaSmtp(email, subject, htmlContent);
+                const result = await this.sendEmailViaSmtp(email, subject, htmlContent);
+                if (result) {
+                    logger_1.default.info(`Password reset email sent successfully via SMTP to ${email}`);
+                }
+                else {
+                    logger_1.default.error(`Failed to send password reset email via SMTP to ${email}`);
+                }
+                return result;
             }
         }
         catch (error) {
@@ -184,13 +213,13 @@ class EmailService {
             return false;
         }
     }
-    async sendWelcomeEmail(email, firstName, lastName, membershipNumber) {
+    async sendWelcomeEmail(email, firstName, lastName, membershipNumber, delegateInfo) {
         if (!this.isConfigured) {
             logger_1.default.warn("Email service not configured");
             return false;
         }
         const subject = "Welcome to MWU Kenya - Registration Successful";
-        const htmlContent = this.generateWelcomeEmailTemplate(firstName, lastName, membershipNumber);
+        const htmlContent = this.generateWelcomeEmailTemplate(firstName, lastName, membershipNumber, delegateInfo);
         try {
             if (this.currentMode === "zeptomail") {
                 return await this.sendEmailViaZeptoMail(email, subject, htmlContent);
@@ -274,7 +303,9 @@ class EmailService {
     <body>
       <div class="container">
         <div class="header">
-          <div class="logo">Matatu Workers Union Kenya</div>
+          <div class="logo">
+            <img src="${process.env.FRONTEND_URL || "http://localhost:5173"}/mwulogo.png" alt="MWU Kenya" style="max-width: 120px;">
+          </div>
         </div>
         
         <div class="content">
@@ -302,14 +333,24 @@ class EmailService {
         
         <div class="footer">
           <p>This is an automated message, please do not reply to this email.</p>
-          <p>&copy; 2024 Matatu Workers Union Kenya. All rights reserved.</p>
+          <p>&copy; 2025 MWU Kenya. All rights reserved.</p>
         </div>
       </div>
     </body>
     </html>
     `;
     }
-    generateWelcomeEmailTemplate(firstName, lastName, membershipNumber) {
+    generateWelcomeEmailTemplate(firstName, lastName, membershipNumber, delegateInfo) {
+        const delegateDetails = delegateInfo
+            ? `
+      <div class="delegate-info">
+        <h3>Your Delegate Details</h3>
+        <p><strong>Delegate Name:</strong> ${delegateInfo.delegateName || "N/A"}</p>
+        <p><strong>Delegate Contact:</strong> ${delegateInfo.delegateContact || "N/A"}</p>
+        <p><strong>Delegate Code:</strong> ${delegateInfo.delegateCode || "N/A"}</p>
+      </div>
+    `
+            : "";
         return `
     <!DOCTYPE html>
     <html>
@@ -360,6 +401,14 @@ class EmailService {
           color: #0ea5e9;
           margin: 10px 0;
         }
+        .delegate-info {
+          background-color: #e0f2fe;
+          border: 1px solid #3b82f6;
+          padding: 20px;
+          border-radius: 6px;
+          margin: 20px 0;
+          text-align: left;
+        }
         .footer {
           margin-top: 30px;
           padding-top: 20px;
@@ -373,7 +422,9 @@ class EmailService {
     <body>
       <div class="container">
         <div class="header">
-          <div class="logo">Matatu Workers Union Kenya</div>
+          <div class="logo">
+            <img src="${process.env.FRONTEND_URL || "http://localhost:5173"}/mwulogo.png" alt="MWU Kenya" style="max-width: 120px;">
+          </div>
         </div>
         
         <div class="content">
@@ -389,6 +440,8 @@ class EmailService {
             <p>Please keep this membership number safe. You'll need it for accessing union services and benefits.</p>
           </div>
           
+          ${delegateDetails}
+
           <p>As a member of MWU Kenya, you now have access to:</p>
           <ul>
             <li>Health insurance benefits and medical coverage</li>
@@ -407,7 +460,7 @@ class EmailService {
         
         <div class="footer">
           <p>This is an automated message, please do not reply to this email.</p>
-          <p>&copy; 2024 Matatu Workers Union Kenya. All rights reserved.</p>
+          <p>&copy; 2025 Matatu Workers Union Kenya. All rights reserved.</p>
         </div>
       </div>
     </body>
@@ -426,7 +479,49 @@ class EmailService {
             mode: this.currentMode,
             smtpConfigured: this.smtpTransporter !== null,
             zeptoMailConfigured: this.zeptoMailTransporter !== null,
+            environment: process.env.NODE_ENV || "development",
+            frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
         };
+    }
+    async testEmailSending() {
+        if (!this.isConfigured) {
+            return {
+                success: false,
+                mode: this.currentMode,
+                error: "Email service not configured",
+            };
+        }
+        const testEmail = "test@example.com";
+        const testSubject = "Test Email - MWU Kenya";
+        const testContent = "<h1>This is a test email</h1><p>If you receive this, the email service is working.</p>";
+        try {
+            let result = false;
+            if (this.currentMode === "zeptomail") {
+                result = await this.sendEmailViaZeptoMail(testEmail, testSubject, testContent);
+            }
+            else {
+                result = await this.sendEmailViaSmtp(testEmail, testSubject, testContent);
+            }
+            return {
+                success: result,
+                mode: this.currentMode,
+                details: {
+                    configured: this.isConfigured,
+                    transporter: this.currentMode === "zeptomail" ? "ZeptoMail" : "SMTP",
+                },
+            };
+        }
+        catch (error) {
+            return {
+                success: false,
+                mode: this.currentMode,
+                error: error instanceof Error ? error.message : "Unknown error",
+                details: {
+                    configured: this.isConfigured,
+                    transporter: this.currentMode === "zeptomail" ? "ZeptoMail" : "SMTP",
+                },
+            };
+        }
     }
 }
 exports.emailService = new EmailService();

@@ -80,30 +80,52 @@ class EmailService {
 
   private initializeZeptoMailService() {
     try {
-      const config: ZeptoMailConfig = {
-        host: "smtp.zeptomail.com",
-        port: 587,
-        secure: false, // TLS
-        auth: {
-          user: "emailapikey",
-          pass: process.env.ZEPTOMAIL_API_KEY || "",
-        },
-        fromEmail: process.env.ZEPTOMAIL_FROM_EMAIL || "noreply@mwukenya.co.ke",
-      };
+      const apiKey = process.env.ZEPTOMAIL_API_KEY;
+      const fromEmail = process.env.ZEPTOMAIL_FROM_EMAIL;
 
-      if (!config.auth.pass) {
+      if (!apiKey) {
         logger.warn(
           "ZeptoMail service not configured - missing ZEPTOMAIL_API_KEY"
         );
         return;
       }
 
+      if (!fromEmail) {
+        logger.warn(
+          "ZeptoMail service not configured - missing ZEPTOMAIL_FROM_EMAIL"
+        );
+        return;
+      }
+
+      const config: ZeptoMailConfig = {
+        host: "smtp.zeptomail.com",
+        port: 587,
+        secure: false, // TLS
+        auth: {
+          user: "emailapikey",
+          pass: apiKey,
+        },
+        fromEmail: fromEmail,
+      };
+
       this.zeptoMailTransporter = nodemailer.createTransport(config);
       this.zeptoMailConfig = config;
       this.isConfigured = true;
-      logger.info("ZeptoMail email service initialized successfully");
+
+      // Test the connection
+      this.zeptoMailTransporter.verify((error, success) => {
+        if (error) {
+          logger.error("ZeptoMail connection test failed:", error);
+          this.isConfigured = false;
+        } else {
+          logger.info(
+            "ZeptoMail email service initialized and verified successfully"
+          );
+        }
+      });
     } catch (error) {
       logger.error("Failed to initialize ZeptoMail email service:", error);
+      this.isConfigured = false;
     }
   }
 
@@ -195,19 +217,19 @@ class EmailService {
         `Link: ${resetUrl}`,
         `⚠️  Link expires in 10 minutes`,
         `Mode: ${this.currentMode.toUpperCase()}`,
+        `Service Configured: ${this.isConfigured}`,
         "=".repeat(80),
       ].join("\n");
 
       // Log to both console and logger for visibility
       console.log(logMessage);
-      logger.info(logMessage);
+      logger.info(logMessage);    }
 
-      // In development, always return true for testing
-      return true;
-    }
-
+    // Check if email service is configured
     if (!this.isConfigured) {
-      logger.warn("Email service not configured");
+      logger.error(
+        "Email service not configured - cannot send password reset email"
+      );
       return false;
     }
 
@@ -218,10 +240,38 @@ class EmailService {
     );
 
     try {
+      logger.info(
+        `Attempting to send password reset email to ${email} via ${this.currentMode}`
+      );
+
       if (this.currentMode === "zeptomail") {
-        return await this.sendEmailViaZeptoMail(email, subject, htmlContent);
+        const result = await this.sendEmailViaZeptoMail(
+          email,
+          subject,
+          htmlContent
+        );
+        if (result) {
+          logger.info(
+            `Password reset email sent successfully via ZeptoMail to ${email}`
+          );
+        } else {
+          logger.error(
+            `Failed to send password reset email via ZeptoMail to ${email}`
+          );
+        }
+        return result;
       } else {
-        return await this.sendEmailViaSmtp(email, subject, htmlContent);
+        const result = await this.sendEmailViaSmtp(email, subject, htmlContent);
+        if (result) {
+          logger.info(
+            `Password reset email sent successfully via SMTP to ${email}`
+          );
+        } else {
+          logger.error(
+            `Failed to send password reset email via SMTP to ${email}`
+          );
+        }
+        return result;
       }
     } catch (error) {
       logger.error(`Failed to send password reset email to ${email}:`, error);
@@ -257,7 +307,12 @@ class EmailService {
     email: string,
     firstName: string,
     lastName: string,
-    membershipNumber: string
+    membershipNumber: string,
+    delegateInfo?: {
+      delegateName?: string;
+      delegateContact?: string;
+      delegateCode?: string;
+    }
   ): Promise<boolean> {
     if (!this.isConfigured) {
       logger.warn("Email service not configured");
@@ -268,7 +323,8 @@ class EmailService {
     const htmlContent = this.generateWelcomeEmailTemplate(
       firstName,
       lastName,
-      membershipNumber
+      membershipNumber,
+      delegateInfo
     );
 
     try {
@@ -399,8 +455,30 @@ class EmailService {
   private generateWelcomeEmailTemplate(
     firstName: string,
     lastName: string,
-    membershipNumber: string
+    membershipNumber: string,
+    delegateInfo?: {
+      delegateName?: string;
+      delegateContact?: string;
+      delegateCode?: string;
+    }
   ): string {
+    const delegateDetails = delegateInfo
+      ? `
+      <div class="delegate-info">
+        <h3>Your Delegate Details</h3>
+        <p><strong>Delegate Name:</strong> ${
+          delegateInfo.delegateName || "N/A"
+        }</p>
+        <p><strong>Delegate Contact:</strong> ${
+          delegateInfo.delegateContact || "N/A"
+        }</p>
+        <p><strong>Delegate Code:</strong> ${
+          delegateInfo.delegateCode || "N/A"
+        }</p>
+      </div>
+    `
+      : "";
+
     return `
     <!DOCTYPE html>
     <html>
@@ -451,6 +529,14 @@ class EmailService {
           color: #0ea5e9;
           margin: 10px 0;
         }
+        .delegate-info {
+          background-color: #e0f2fe;
+          border: 1px solid #3b82f6;
+          padding: 20px;
+          border-radius: 6px;
+          margin: 20px 0;
+          text-align: left;
+        }
         .footer {
           margin-top: 30px;
           padding-top: 20px;
@@ -484,6 +570,8 @@ class EmailService {
             <p>Please keep this membership number safe. You'll need it for accessing union services and benefits.</p>
           </div>
           
+          ${delegateDetails}
+
           <p>As a member of MWU Kenya, you now have access to:</p>
           <ul>
             <li>Health insurance benefits and medical coverage</li>
@@ -523,13 +611,74 @@ class EmailService {
     mode: EmailMode;
     smtpConfigured: boolean;
     zeptoMailConfigured: boolean;
+    environment: string;
+    frontendUrl: string;
   } {
     return {
       configured: this.isConfigured,
       mode: this.currentMode,
       smtpConfigured: this.smtpTransporter !== null,
       zeptoMailConfigured: this.zeptoMailTransporter !== null,
+      environment: process.env.NODE_ENV || "development",
+      frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
     };
+  }
+
+  // Test email sending capability
+  public async testEmailSending(): Promise<{
+    success: boolean;
+    mode: EmailMode;
+    error?: string;
+    details?: any;
+  }> {
+    if (!this.isConfigured) {
+      return {
+        success: false,
+        mode: this.currentMode,
+        error: "Email service not configured",
+      };
+    }
+
+    const testEmail = "test@example.com";
+    const testSubject = "Test Email - MWU Kenya";
+    const testContent =
+      "<h1>This is a test email</h1><p>If you receive this, the email service is working.</p>";
+
+    try {
+      let result = false;
+      if (this.currentMode === "zeptomail") {
+        result = await this.sendEmailViaZeptoMail(
+          testEmail,
+          testSubject,
+          testContent
+        );
+      } else {
+        result = await this.sendEmailViaSmtp(
+          testEmail,
+          testSubject,
+          testContent
+        );
+      }
+
+      return {
+        success: result,
+        mode: this.currentMode,
+        details: {
+          configured: this.isConfigured,
+          transporter: this.currentMode === "zeptomail" ? "ZeptoMail" : "SMTP",
+        },
+      };
+    } catch (error) {
+      return {
+        success: false,
+        mode: this.currentMode,
+        error: error instanceof Error ? error.message : "Unknown error",
+        details: {
+          configured: this.isConfigured,
+          transporter: this.currentMode === "zeptomail" ? "ZeptoMail" : "SMTP",
+        },
+      };
+    }
   }
 }
 

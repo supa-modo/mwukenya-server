@@ -13,7 +13,11 @@ declare class EmailService {
     private sendEmailViaSmtp;
     sendPasswordResetEmail(email: string, resetToken: string, firstName: string): Promise<boolean>;
     sendEmail(to: string, subject: string, htmlContent: string): Promise<boolean>;
-    sendWelcomeEmail(email: string, firstName: string, lastName: string, membershipNumber: string): Promise<boolean>;
+    sendWelcomeEmail(email: string, firstName: string, lastName: string, membershipNumber: string, delegateInfo?: {
+        delegateName?: string;
+        delegateContact?: string;
+        delegateCode?: string;
+    }): Promise<boolean>;
     private generatePasswordResetEmailTemplate;
     private generateWelcomeEmailTemplate;
     isEmailConfigured(): boolean;
@@ -23,7 +27,15 @@ declare class EmailService {
         mode: EmailMode;
         smtpConfigured: boolean;
         zeptoMailConfigured: boolean;
+        environment: string;
+        frontendUrl: string;
     };
+    testEmailSending(): Promise<{
+        success: boolean;
+        mode: EmailMode;
+        error?: string;
+        details?: any;
+    }>;
 }
 export declare const emailService: EmailService;
 export default emailService;

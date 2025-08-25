@@ -53,8 +53,8 @@ class SMSService {
       const username =
         mode === "sandbox" ? "sandbox" : process.env.AFRICAS_TALKING_USERNAME;
 
-      const senderId =
-        process.env.AFRICAS_TALKING_SENDER_ID || "MATATU_WORKERS_UNION";
+      // Only set senderId if it's configured and not empty
+      const senderId = process.env.AFRICAS_TALKING_SENDER_ID || "";
 
       if (!apiKey || !username) {
         logger.warn(
@@ -75,7 +75,7 @@ class SMSService {
         `SMS service initialized in ${mode.toUpperCase()} mode with Africa's Talking`,
         {
           username,
-          senderId,
+          senderId: senderId || "Not configured (will use default)",
         }
       );
     } catch (error) {
@@ -233,7 +233,21 @@ class SMSService {
         this.africasTalkingConfig.senderId.trim() !== ""
       ) {
         requestBody.from = this.africasTalkingConfig.senderId;
+        logger.info(
+          `Sending SMS with sender ID: ${this.africasTalkingConfig.senderId}`
+        );
+      } else {
+        logger.info(
+          "Sending SMS without sender ID (will use Africa's Talking default)"
+        );
       }
+
+      logger.info(`Sending SMS to ${phoneNumber} via Africa's Talking API`, {
+        url: apiUrl,
+        username: this.africasTalkingConfig.username,
+        hasSenderId: !!requestBody.from,
+        mode: this.currentMode,
+      });
 
       const response = await fetch(apiUrl, {
         method: "POST",
@@ -265,10 +279,15 @@ class SMSService {
           logger.info(`SMS sent successfully to ${phoneNumber}`, {
             response: message,
             mode: this.currentMode,
+            senderId: requestBody.from || "default",
           });
           return true;
         } else {
-          logger.error(`SMS delivery failed: ${message}`);
+          logger.error(`SMS delivery failed: ${message}`, {
+            phoneNumber,
+            mode: this.currentMode,
+            senderId: requestBody.from || "default",
+          });
           return false;
         }
       } else {
@@ -289,10 +308,15 @@ class SMSService {
             messageId: recipient.messageId,
             cost: recipient.cost,
             mode: this.currentMode,
+            senderId: requestBody.from || "default",
           });
           return true;
         } else {
-          logger.error(`SMS delivery failed: ${recipient.status}`);
+          logger.error(`SMS delivery failed: ${recipient.status}`, {
+            phoneNumber,
+            mode: this.currentMode,
+            senderId: requestBody.from || "default",
+          });
           return false;
         }
       }
