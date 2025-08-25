@@ -579,7 +579,20 @@ class AuthService {
             }
             else {
                 const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
-                await redis_1.redisUtils.setex(`reset_code:${user.phoneNumber}`, resetCode, 600);
+                const phoneKey = user.phoneNumber;
+                if (process.env.NODE_ENV === "development" || !process.env.NODE_ENV) {
+                    const logMessage = [
+                        "🔐 PASSWORD RESET CODE STORAGE DEBUG",
+                        `User Phone: ${user.phoneNumber}`,
+                        `Phone Key: ${phoneKey}`,
+                        `Reset Code: ${resetCode}`,
+                        `Redis Key: reset_code:${phoneKey}`,
+                        `Expiry: 600 seconds (10 minutes)`,
+                    ].join("\n");
+                    console.log(logMessage);
+                    logger_1.default.info(logMessage);
+                }
+                await redis_1.redisUtils.setex(`reset_code:${phoneKey}`, resetCode, 600);
                 await redis_1.redisUtils.setex(`reset_token:${resetToken}`, user.id, 600);
                 messageSent = await smsService_1.smsService.sendPasswordResetSMS(user.phoneNumber, resetCode, user.firstName);
                 if (process.env.NODE_ENV === "development" || !process.env.NODE_ENV) {
@@ -720,8 +733,21 @@ class AuthService {
     }
     static async resetPasswordWithCode(phoneNumber, resetCode, newPassword) {
         try {
-            const formattedPhone = smsService_1.smsService.formatPhoneNumber(phoneNumber);
+            const formattedPhone = models_1.User.formatPhoneNumber(phoneNumber);
             const storedCode = await redis_1.redisUtils.get(`reset_code:${formattedPhone}`);
+            if (process.env.NODE_ENV === "development" || !process.env.NODE_ENV) {
+                const logMessage = [
+                    "🔐 PASSWORD RESET CODE VALIDATION DEBUG",
+                    `Input Phone: ${phoneNumber}`,
+                    `Formatted Phone: ${formattedPhone}`,
+                    `Redis Key: reset_code:${formattedPhone}`,
+                    `Stored Code: ${storedCode ? storedCode : "NOT FOUND"}`,
+                    `Provided Code: ${resetCode}`,
+                    `Codes Match: ${storedCode === resetCode ? "YES" : "NO"}`,
+                ].join("\n");
+                console.log(logMessage);
+                logger_1.default.info(logMessage);
+            }
             if (!storedCode || storedCode !== resetCode) {
                 throw new apiError_1.ApiError("Invalid or expired reset code", "AUTH_003", 400);
             }

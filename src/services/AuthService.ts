@@ -778,11 +778,27 @@ export class AuthService {
         const resetCode = Math.floor(
           100000 + Math.random() * 900000
         ).toString();
-        await redisUtils.setex(
-          `reset_code:${user.phoneNumber}`,
-          resetCode,
-          600
-        ); // 10 minutes
+
+        // Use the user's phone number as stored in the database (should already be formatted)
+        // The User model ensures this is in +254XXXXXXXXX format
+        const phoneKey = user.phoneNumber;
+
+        // Debug logging for development
+        if (process.env.NODE_ENV === "development" || !process.env.NODE_ENV) {
+          const logMessage = [
+            "🔐 PASSWORD RESET CODE STORAGE DEBUG",
+            `User Phone: ${user.phoneNumber}`,
+            `Phone Key: ${phoneKey}`,
+            `Reset Code: ${resetCode}`,
+            `Redis Key: reset_code:${phoneKey}`,
+            `Expiry: 600 seconds (10 minutes)`,
+          ].join("\n");
+
+          console.log(logMessage);
+          logger.info(logMessage);
+        }
+
+        await redisUtils.setex(`reset_code:${phoneKey}`, resetCode, 600); // 10 minutes
         await redisUtils.setex(`reset_token:${resetToken}`, user.id, 600);
 
         messageSent = await smsService.sendPasswordResetSMS(
@@ -971,10 +987,28 @@ export class AuthService {
     newPassword: string
   ): Promise<ServiceResponse<{ message: string }>> {
     try {
-      const formattedPhone = smsService.formatPhoneNumber(phoneNumber);
+      // Format the phone number consistently with how it's stored
+      // Use User model's formatPhoneNumber to ensure consistency
+      const formattedPhone = User.formatPhoneNumber(phoneNumber);
 
       // Verify reset code
       const storedCode = await redisUtils.get(`reset_code:${formattedPhone}`);
+
+      // Debug logging for development
+      if (process.env.NODE_ENV === "development" || !process.env.NODE_ENV) {
+        const logMessage = [
+          "🔐 PASSWORD RESET CODE VALIDATION DEBUG",
+          `Input Phone: ${phoneNumber}`,
+          `Formatted Phone: ${formattedPhone}`,
+          `Redis Key: reset_code:${formattedPhone}`,
+          `Stored Code: ${storedCode ? storedCode : "NOT FOUND"}`,
+          `Provided Code: ${resetCode}`,
+          `Codes Match: ${storedCode === resetCode ? "YES" : "NO"}`,
+        ].join("\n");
+
+        console.log(logMessage);
+        logger.info(logMessage);
+      }
 
       if (!storedCode || storedCode !== resetCode) {
         throw new ApiError("Invalid or expired reset code", "AUTH_003", 400);

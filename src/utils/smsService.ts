@@ -71,18 +71,6 @@ class SMSService {
 
       this.isConfigured = true;
 
-      // Debug logging
-      console.log("🔍 SMS Service Configuration Debug:");
-      console.log("  Mode:", mode);
-      console.log("  Username:", username);
-      console.log("APIKEY", apiKey);
-      console.log("  API Key Length:", apiKey ? apiKey.length : 0);
-      console.log("  Sender ID:", senderId);
-      console.log(
-        "  API Key (first 20 chars):",
-        apiKey ? apiKey.substring(0, 20) + "..." : "undefined"
-      );
-
       logger.info(
         `SMS service initialized in ${mode.toUpperCase()} mode with Africa's Talking`,
         {
@@ -267,6 +255,9 @@ class SMSService {
           : "undefined"
       );
       console.log("  Request Body:", JSON.stringify(requestBody, null, 2));
+      console.log("  Phone Number:", phoneNumber);
+      console.log("  Formatted Phone:", this.formatPhoneNumber(phoneNumber));
+      console.log("  Mode:", this.currentMode);
 
       logger.info(`Sending SMS to ${phoneNumber} via Africa's Talking API`, {
         url: apiUrl,
@@ -289,6 +280,10 @@ class SMSService {
 
       if (!response.ok) {
         const errorText = await response.text();
+        console.log("🔍 SMS API Error Response:");
+        console.log("  Status:", response.status);
+        console.log("  Status Text:", response.statusText);
+        console.log("  Error Body:", errorText);
         logger.error(
           `Africa's Talking API error: ${response.status} ${response.statusText} - ${errorText}`
         );
