@@ -405,14 +405,14 @@ class EmailService {
         }
         .header {
           text-align: center;
-          padding: 20px 0;
+          padding: 16px 0;
           border-bottom: 2px solid #16a34a;
         }
         .header-text {
           text-align: center;
-          padding: 20px 0;
+          padding: 12px 0;
+          font-weight: bold
           color: #16a34a;
-          border-bottom: 2px solid #16a34a;
         }
         .logo {
           color: #16a34a;
@@ -456,9 +456,7 @@ class EmailService {
       <div class="container">
         <div class="header">
           <div class="logo">
-            <img src="${
-              process.env.FRONTEND_URL || "http://localhost:5173"
-            }/mwulogo.png" alt="MWU Kenya" style="max-width: 120px;">
+            <img src="https://mwukenya.co.ke/mwulogo.png" alt="MWU Kenya" style="max-width:120px;">
           </div>
           <div class="header-text">
             <h1>Matatu Workers Union</h1>
@@ -550,14 +548,14 @@ class EmailService {
         }
         .header {
           text-align: center;
-          padding: 20px 0;
+          padding: 16px 0;
           border-bottom: 2px solid #16a34a;
         }
         .header-text {
           text-align: center;
-          padding: 20px 0;
+          font-weight: bold;
+          padding: 12px 0;
           color: #16a34a;
-          border-bottom: 2px solid #16a34a;
         }
         .logo {
           color: #16a34a;
@@ -603,9 +601,7 @@ class EmailService {
       <div class="container">
         <div class="header">
           <div class="logo">
-            <img src="${
-              process.env.FRONTEND_URL || "http://localhost:5173"
-            }/mwulogo.png" alt="MWU Kenya" style="max-width: 120px;">
+            <img src="https://mwukenya.co.ke/mwulogo.png" alt="MWU Kenya" style="max-width:120px;">
           </div>
           <div class="header-text">
             <h1>Matatu Workers Union</h1>
@@ -758,9 +754,7 @@ class EmailService {
       <div class="container">
         <div class="header">
           <div class="logo">
-            <img src="${
-              process.env.FRONTEND_URL || "http://localhost:5173"
-            }/mwulogo.png" alt="MWU Kenya" style="max-width: 120px;">
+            src="https://mwukenya.co.ke/mwulogo.png" alt="MWU Kenya" style="max-width:120px;">
           </div>
           <div class="header-text">
             <h1>Matatu Workers Union</h1>
