@@ -55,6 +55,13 @@ class SMSService {
       // Only set senderId if it's configured and not empty
       const senderId = process.env.AFRICAS_TALKING_SENDER_ID || "";
 
+      // Log warning if no sender ID is configured in production
+      if (mode === "production" && (!senderId || senderId.trim() === "")) {
+        logger.warn(
+          "No sender ID configured for production mode. SMS delivery may fail. Please set AFRICAS_TALKING_SENDER_ID environment variable."
+        );
+      }
+
       if (!apiKey || !username) {
         logger.warn(
           `Africa's Talking SMS service not configured - missing API key or username for ${mode} mode`
@@ -293,13 +300,22 @@ class SMSService {
       const responseText = await response.text();
       let result: any;
 
+      // Log the full response for debugging
+      console.log("🔍 SMS API Response Debug:");
+      console.log("  Status:", response.status);
+      console.log("  Response Text:", responseText);
+
       // Handle XML response from Africa's Talking
       if (responseText.includes("<AfricasTalkingResponse>")) {
         // Parse XML response
         const messageMatch = responseText.match(/<Message>(.*?)<\/Message>/);
         const message = messageMatch ? messageMatch[1] : "Unknown response";
 
-        if (message.includes("Success") || message.includes("Sent to")) {
+        // Check if SMS was actually delivered (not just accepted)
+        if (
+          message.includes("Success") ||
+          (message.includes("Sent to") && !message.includes("Sent to 0/"))
+        ) {
           logger.info(`SMS sent successfully to ${phoneNumber}`, {
             response: message,
             mode: this.currentMode,
@@ -311,6 +327,9 @@ class SMSService {
             phoneNumber,
             mode: this.currentMode,
             senderId: requestBody.from || "default",
+            note: message.includes("Sent to 0/")
+              ? "No recipients received the SMS - check sender ID and phone number"
+              : "Unknown delivery failure",
           });
           return false;
         }
