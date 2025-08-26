@@ -212,7 +212,7 @@ class EmailService {
         `Reset Token: ${resetToken}`,
         `Reset URL: ${resetUrl}`,
         "Email Content:",
-        `Subject: Password Reset Request - Matatu Workers Union Kenya`,
+        `Subject: Password Reset Request - Matatu Workers Union`,
         `Message: Hello ${firstName}, click the link below to reset your password:`,
         `Link: ${resetUrl}`,
         `⚠️  Link expires in 10 minutes`,
@@ -234,7 +234,7 @@ class EmailService {
       return false;
     }
 
-    const subject = "Password Reset Request - Matatu Workers Union Kenya";
+    const subject = "Password Reset Request - Matatu Workers Union";
     const htmlContent = this.generatePasswordResetEmailTemplate(
       firstName,
       resetUrl
@@ -320,8 +320,7 @@ class EmailService {
       return false;
     }
 
-    const subject =
-      "Welcome to Matatu Workers Union Kenya - Registration Successful";
+    const subject = "Welcome to Matatu Workers Union - Registration Successful";
     const htmlContent = this.generateWelcomeEmailTemplate(
       firstName,
       lastName,
@@ -387,7 +386,7 @@ class EmailService {
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Password Reset - Matatu Workers Union Kenya</title>
+      <title>Password Reset - Matatu Workers Union</title>
       <style>
         body {
           font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -462,7 +461,7 @@ class EmailService {
             }/mwulogo.png" alt="MWU Kenya" style="max-width: 120px;">
           </div>
           <div class="header-text">
-            <h1>Matatu Workers Union Kenya</h1>
+            <h1>Matatu Workers Union</h1>
           </div>
         </div>
         
@@ -471,7 +470,7 @@ class EmailService {
           
           <p>Hello ${firstName},</p>
           
-          <p>We received a request to reset your password for your Matatu Workers Union Kenya account. If you made this request, click the button below to reset your password:</p>
+          <p>We received a request to reset your password for your Matatu Workers Union account. If you made this request, click the button below to reset your password:</p>
           
           <div style="text-align: center;">
             <a href="${resetUrl}" class="btn">Reset Your Password</a>
@@ -486,7 +485,7 @@ class EmailService {
           
           <p>If you're having trouble with the button above, copy and paste the URL into your web browser.</p>
           
-          <p>Best regards,<br>The Matatu Workers Union Kenya Team</p>
+          <p>Best regards,<br>The Matatu Workers Union Team</p>
         </div>
         
         <div class="footer">
@@ -532,7 +531,7 @@ class EmailService {
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Welcome to Matatu Workers Union Kenya</title>
+      <title>Welcome to Matatu Workers Union</title>
       <style>
         body {
           font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -609,16 +608,16 @@ class EmailService {
             }/mwulogo.png" alt="MWU Kenya" style="max-width: 120px;">
           </div>
           <div class="header-text">
-            <h1>Matatu Workers Union Kenya</h1>
+            <h1>Matatu Workers Union</h1>
           </div>
         </div>
         
         <div class="content">
-          <h2>Welcome to Matatu Workers Union Kenya!</h2>
+          <h2>Welcome to Matatu Workers Union!</h2>
           
           <p>Dear ${firstName} ${lastName},</p>
           
-          <p>Welcome to the Matatu Workers Union Kenya! We're excited to have you as a member of our community.</p>
+          <p>Welcome to the Matatu Workers Union! We're excited to have you as a member of our community.</p>
           
           <div class="membership-info">
             <h3>Your Membership Details</h3>
@@ -668,7 +667,7 @@ class EmailService {
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Support Request - Matatu Workers Union Kenya</title>
+      <title>Support Request - Matatu Workers Union</title>
       <style>
         body {
           font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -764,7 +763,7 @@ class EmailService {
             }/mwulogo.png" alt="MWU Kenya" style="max-width: 120px;">
           </div>
           <div class="header-text">
-            <h1>Matatu Workers Union Kenya</h1>
+            <h1>Matatu Workers Union</h1>
           </div>
         </div>
         
@@ -837,7 +836,7 @@ class EmailService {
         
         <div class="footer">
           <p>This is an automated message from the MWU Kenya support system.</p>
-          <p>&copy; 2025 Matatu Workers Union Kenya. All rights reserved.</p>
+          <p>&copy; 2025 Matatu Workers Union. All rights reserved.</p>
         </div>
       </div>
     </body>
@@ -887,7 +886,7 @@ class EmailService {
     }
 
     const testEmail = "test@example.com";
-    const testSubject = "Test Email - Matatu Workers Union Kenya";
+    const testSubject = "Test Email - Matatu Workers Union";
     const testContent =
       "<h1>This is a test email</h1><p>If you receive this, the email service is working.</p>";
 
