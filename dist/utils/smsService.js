@@ -55,7 +55,7 @@ class SMSService {
     async sendRegistrationSuccessSMS(phoneNumber, userData) {
         const template = {
             type: "registration_success",
-            message: `Hello ${userData.firstName} ${userData.lastName}! Welcome to MWU Kenya. Your registration is successful. ID: ${userData.idNumber}, Membership: ${userData.membershipNumber}, SACCO: ${userData.sacco}, Delegate: ${userData.delegateName} (${userData.delegateCode}). You will receive further instructions via SMS.`,
+            message: `Hello ${userData.firstName} ${userData.lastName}! Welcome to Matatu Workers Union Kenya. Your registration is successful. ID: ${userData.idNumber}, Membership: ${userData.membershipNumber}, SACCO: ${userData.sacco}, Delegate: ${userData.delegateName} (${userData.delegateCode}). You will receive further instructions via SMS.`,
             variables: {
                 firstName: userData.firstName,
                 lastName: userData.lastName,
@@ -72,7 +72,7 @@ class SMSService {
     async sendPasswordResetSMS(phoneNumber, resetCode, firstName) {
         const template = {
             type: "password_reset",
-            message: `Hello ${firstName}, your MWU Kenya password reset code is: ${resetCode}. This code expires in 10 minutes. If you didn't request this, please ignore.`,
+            message: `Hello ${firstName}, your Matatu Workers Union Kenya password reset code is: ${resetCode}. This code expires in 10 minutes. If you didn't request this, please ignore.`,
             variables: {
                 firstName,
                 resetCode,
@@ -83,7 +83,7 @@ class SMSService {
     async sendWelcomeSMS(phoneNumber, userData) {
         const template = {
             type: "welcome",
-            message: `Welcome ${userData.firstName} ${userData.lastName} to MWU Kenya! Your membership number is ${userData.membershipNumber}. You're registered under ${userData.sacco}. We'll keep you updated on health insurance benefits and union activities.`,
+            message: `Welcome ${userData.firstName} ${userData.lastName} to Matatu Workers Union Kenya! Your membership number is ${userData.membershipNumber}. You're registered under ${userData.sacco}. We'll keep you updated on health insurance benefits and union activities.`,
             variables: {
                 firstName: userData.firstName,
                 lastName: userData.lastName,
@@ -298,7 +298,8 @@ class SMSService {
         }
         try {
             const testPhone = "+254790193402";
-            const testMessage = "MWU Kenya SMS Service Test - " + new Date().toISOString();
+            const testMessage = "<Matatu Workers Union Kenya> SMS Service Test - " +
+                new Date().toISOString();
             const success = await this.sendCustomSMS(testPhone, testMessage);
             return {
                 success,

@@ -18,8 +18,17 @@ declare class EmailService {
         delegateContact?: string;
         delegateCode?: string;
     }): Promise<boolean>;
+    sendContactFormEmail(formData: {
+        name: string;
+        email: string;
+        phone?: string;
+        subject: string;
+        message: string;
+        category: string;
+    }): Promise<boolean>;
     private generatePasswordResetEmailTemplate;
     private generateWelcomeEmailTemplate;
+    private generateContactFormEmailTemplate;
     isEmailConfigured(): boolean;
     getCurrentMode(): EmailMode;
     getServiceStatus(): {

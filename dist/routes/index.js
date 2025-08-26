@@ -44,6 +44,7 @@ const documents_1 = __importDefault(require("./documents"));
 const medicalSchemes_1 = __importDefault(require("./medicalSchemes"));
 const subscriptions_1 = __importDefault(require("./subscriptions"));
 const dependants_1 = __importDefault(require("./dependants"));
+const contact_1 = __importDefault(require("./contact"));
 const router = (0, express_1.Router)();
 router.get("/health", (req, res) => {
     res.status(200).json({
@@ -108,6 +109,7 @@ router.use("/documents", documents_1.default);
 router.use("/medical-schemes", medicalSchemes_1.default);
 router.use("/subscriptions", subscriptions_1.default);
 router.use("/dependants", dependants_1.default);
+router.use("/contact", contact_1.default);
 router.use("*", (req, res) => {
     res.status(404).json({
         success: false,

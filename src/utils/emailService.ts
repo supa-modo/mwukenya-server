@@ -212,7 +212,7 @@ class EmailService {
         `Reset Token: ${resetToken}`,
         `Reset URL: ${resetUrl}`,
         "Email Content:",
-        `Subject: Password Reset Request - MWU Kenya`,
+        `Subject: Password Reset Request - Matatu Workers Union Kenya`,
         `Message: Hello ${firstName}, click the link below to reset your password:`,
         `Link: ${resetUrl}`,
         `⚠️  Link expires in 10 minutes`,
@@ -223,7 +223,8 @@ class EmailService {
 
       // Log to both console and logger for visibility
       console.log(logMessage);
-      logger.info(logMessage);    }
+      logger.info(logMessage);
+    }
 
     // Check if email service is configured
     if (!this.isConfigured) {
@@ -233,7 +234,7 @@ class EmailService {
       return false;
     }
 
-    const subject = "Password Reset Request - MWU Kenya";
+    const subject = "Password Reset Request - Matatu Workers Union Kenya";
     const htmlContent = this.generatePasswordResetEmailTemplate(
       firstName,
       resetUrl
@@ -319,7 +320,8 @@ class EmailService {
       return false;
     }
 
-    const subject = "Welcome to MWU Kenya - Registration Successful";
+    const subject =
+      "Welcome to Matatu Workers Union Kenya - Registration Successful";
     const htmlContent = this.generateWelcomeEmailTemplate(
       firstName,
       lastName,
@@ -339,6 +341,42 @@ class EmailService {
     }
   }
 
+  // Method for sending contact form submissions to support
+  public async sendContactFormEmail(formData: {
+    name: string;
+    email: string;
+    phone?: string;
+    subject: string;
+    message: string;
+    category: string;
+  }): Promise<boolean> {
+    if (!this.isConfigured) {
+      logger.warn("Email service not configured");
+      return false;
+    }
+
+    const subject = `Support Request: ${formData.subject} - ${formData.category}`;
+    const htmlContent = this.generateContactFormEmailTemplate(formData);
+
+    try {
+      // Send to support email
+      const supportEmail = "support@mwukenya.co.ke";
+
+      if (this.currentMode === "zeptomail") {
+        return await this.sendEmailViaZeptoMail(
+          supportEmail,
+          subject,
+          htmlContent
+        );
+      } else {
+        return await this.sendEmailViaSmtp(supportEmail, subject, htmlContent);
+      }
+    } catch (error) {
+      logger.error(`Failed to send contact form email:`, error);
+      return false;
+    }
+  }
+
   private generatePasswordResetEmailTemplate(
     firstName: string,
     resetUrl: string
@@ -349,7 +387,7 @@ class EmailService {
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Password Reset - MWU Kenya</title>
+      <title>Password Reset - Matatu Workers Union Kenya</title>
       <style>
         body {
           font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -369,6 +407,12 @@ class EmailService {
         .header {
           text-align: center;
           padding: 20px 0;
+          border-bottom: 2px solid #16a34a;
+        }
+        .header-text {
+          text-align: center;
+          padding: 20px 0;
+          color: #16a34a;
           border-bottom: 2px solid #16a34a;
         }
         .logo {
@@ -417,6 +461,9 @@ class EmailService {
               process.env.FRONTEND_URL || "http://localhost:5173"
             }/mwulogo.png" alt="MWU Kenya" style="max-width: 120px;">
           </div>
+          <div class="header-text">
+            <h1>Matatu Workers Union Kenya</h1>
+          </div>
         </div>
         
         <div class="content">
@@ -424,7 +471,7 @@ class EmailService {
           
           <p>Hello ${firstName},</p>
           
-          <p>We received a request to reset your password for your MWU Kenya account. If you made this request, click the button below to reset your password:</p>
+          <p>We received a request to reset your password for your Matatu Workers Union Kenya account. If you made this request, click the button below to reset your password:</p>
           
           <div style="text-align: center;">
             <a href="${resetUrl}" class="btn">Reset Your Password</a>
@@ -439,12 +486,12 @@ class EmailService {
           
           <p>If you're having trouble with the button above, copy and paste the URL into your web browser.</p>
           
-          <p>Best regards,<br>The MWU Kenya Team</p>
+          <p>Best regards,<br>The Matatu Workers Union Kenya Team</p>
         </div>
         
         <div class="footer">
           <p>This is an automated message, please do not reply to this email.</p>
-          <p>&copy; 2025 MWU Kenya. All rights reserved.</p>
+          <p>&copy; 2025 Matatu Workers Union Kenya. All rights reserved.</p>
         </div>
       </div>
     </body>
@@ -485,7 +532,7 @@ class EmailService {
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Welcome to MWU Kenya</title>
+      <title>Welcome to Matatu Workers Union Kenya</title>
       <style>
         body {
           font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -505,6 +552,12 @@ class EmailService {
         .header {
           text-align: center;
           padding: 20px 0;
+          border-bottom: 2px solid #16a34a;
+        }
+        .header-text {
+          text-align: center;
+          padding: 20px 0;
+          color: #16a34a;
           border-bottom: 2px solid #16a34a;
         }
         .logo {
@@ -555,10 +608,13 @@ class EmailService {
               process.env.FRONTEND_URL || "http://localhost:5173"
             }/mwulogo.png" alt="MWU Kenya" style="max-width: 120px;">
           </div>
+          <div class="header-text">
+            <h1>Matatu Workers Union Kenya</h1>
+          </div>
         </div>
         
         <div class="content">
-          <h2>Welcome to MWU Kenya!</h2>
+          <h2>Welcome to Matatu Workers Union Kenya!</h2>
           
           <p>Dear ${firstName} ${lastName},</p>
           
@@ -590,6 +646,197 @@ class EmailService {
         
         <div class="footer">
           <p>This is an automated message, please do not reply to this email.</p>
+          <p>&copy; 2025 Matatu Workers Union Kenya. All rights reserved.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+    `;
+  }
+
+  private generateContactFormEmailTemplate(formData: {
+    name: string;
+    email: string;
+    phone?: string;
+    subject: string;
+    message: string;
+    category: string;
+  }): string {
+    return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Support Request - Matatu Workers Union Kenya</title>
+      <style>
+        body {
+          font-family: 'Helvetica Neue', Arial, sans-serif;
+          line-height: 1.6;
+          margin: 0;
+          padding: 0;
+          background-color: #f5f5f5;
+        }
+        .container {
+          max-width: 600px;
+          margin: 0 auto;
+          padding: 20px;
+          background-color: #ffffff;
+          border-radius: 8px;
+          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+          text-align: center;
+          padding: 20px 0;
+          border-bottom: 2px solid #16a34a;
+        }
+        .header-text {
+          text-align: center;
+          padding: 20px 0;
+          color: #16a34a;
+          border-bottom: 2px solid #16a34a;
+        }
+        .logo {
+          color: #16a34a;
+          font-size: 24px;
+          font-weight: bold;
+        }
+        .content {
+          padding: 30px 0;
+        }
+        .form-details {
+          background-color: #f8fafc;
+          border: 1px solid #e2e8f0;
+          padding: 20px;
+          border-radius: 6px;
+          margin: 20px 0;
+        }
+        .form-field {
+          margin-bottom: 15px;
+        }
+        .form-label {
+          font-weight: bold;
+          color: #374151;
+          display: block;
+          margin-bottom: 5px;
+        }
+        .form-value {
+          color: #6b7280;
+          padding: 8px 12px;
+          background-color: #ffffff;
+          border: 1px solid #d1d5db;
+          border-radius: 4px;
+        }
+        .message-content {
+          background-color: #ffffff;
+          border: 1px solid #d1d5db;
+          padding: 15px;
+          border-radius: 4px;
+          white-space: pre-wrap;
+          min-height: 100px;
+        }
+        .footer {
+          margin-top: 30px;
+          padding-top: 20px;
+          border-top: 1px solid #e5e5e5;
+          font-size: 12px;
+          color: #666;
+          text-align: center;
+        }
+        .category-badge {
+          display: inline-block;
+          padding: 4px 12px;
+          background-color: #16a34a;
+          color: white;
+          border-radius: 20px;
+          font-size: 12px;
+          font-weight: bold;
+          text-transform: uppercase;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <div class="logo">
+            <img src="${
+              process.env.FRONTEND_URL || "http://localhost:5173"
+            }/mwulogo.png" alt="MWU Kenya" style="max-width: 120px;">
+          </div>
+          <div class="header-text">
+            <h1>Matatu Workers Union Kenya</h1>
+          </div>
+        </div>
+        
+        <div class="content">
+          <h2>New Support Request</h2>
+          
+          <p>A new support request has been submitted through the website contact form.</p>
+          
+          <div class="form-details">
+            <div class="form-field">
+              <span class="form-label">Name:</span>
+              <div class="form-value">${formData.name}</div>
+            </div>
+            
+            <div class="form-field">
+              <span class="form-label">Email:</span>
+              <div class="form-value">${formData.email}</div>
+            </div>
+            
+            ${
+              formData.phone
+                ? `
+            <div class="form-field">
+              <span class="form-label">Phone:</span>
+              <div class="form-value">${formData.phone}</div>
+            </div>
+            `
+                : ""
+            }
+            
+            <div class="form-field">
+              <span class="form-label">Category:</span>
+              <div class="form-value">
+                <span class="category-badge">${formData.category}</span>
+              </div>
+            </div>
+            
+            <div class="form-field">
+              <span class="form-label">Subject:</span>
+              <div class="form-value">${formData.subject}</div>
+            </div>
+            
+            <div class="form-field">
+              <span class="form-label">Message:</span>
+              <div class="message-content">${formData.message}</div>
+            </div>
+          </div>
+          
+          <p><strong>Next Steps:</strong></p>
+          <ul>
+            <li>Review the request details above</li>
+            <li>Respond to the user at: <a href="mailto:${formData.email}">${
+      formData.email
+    }</a></li>
+            <li>Update the support ticket status in your system</li>
+          </ul>
+          
+          <p>This request was submitted on ${new Date().toLocaleString(
+            "en-KE",
+            {
+              timeZone: "Africa/Nairobi",
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            }
+          )}.</p>
+        </div>
+        
+        <div class="footer">
+          <p>This is an automated message from the MWU Kenya support system.</p>
           <p>&copy; 2025 Matatu Workers Union Kenya. All rights reserved.</p>
         </div>
       </div>
@@ -640,7 +887,7 @@ class EmailService {
     }
 
     const testEmail = "test@example.com";
-    const testSubject = "Test Email - MWU Kenya";
+    const testSubject = "Test Email - Matatu Workers Union Kenya";
     const testContent =
       "<h1>This is a test email</h1><p>If you receive this, the email service is working.</p>";
 
