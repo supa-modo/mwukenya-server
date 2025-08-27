@@ -169,6 +169,60 @@ export class AdminController {
   }
 
   /**
+   * Get a single user by ID
+   */
+  public static async getUserById(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+
+      const user = await User.findByPk(id, {
+        attributes: {
+          exclude: [
+            "passwordHash",
+            "refreshToken",
+            "passwordResetToken",
+            "passwordResetExpires",
+          ],
+        },
+      });
+
+      if (!user) {
+        throw new ApiError("User not found", "USER_025", 404);
+      }
+
+      res.status(200).json({
+        success: true,
+        data: user,
+        message: "User retrieved successfully",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      logger.error("Error getting user by ID:", error);
+
+      if (error instanceof ApiError) {
+        res.status(error.statusCode).json({
+          success: false,
+          error: {
+            code: error.code,
+            message: error.message,
+          },
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        error: {
+          code: "SYS_001",
+          message: "Internal server error",
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  /**
    * Get comprehensive statistics for admin dashboard
    */
   public static async getUserStats(req: Request, res: Response): Promise<void> {
@@ -1065,7 +1119,8 @@ export class AdminController {
           where: { userId: id, entityType: "user" },
         });
 
-        const requiredDocuments = ["identity", "photo"];
+        //TODO: Add photo verification also later
+        const requiredDocuments = ["identity"];
         const verifiedDocuments = documents.filter(
           (doc) => doc.status === DocumentStatus.VERIFIED
         );

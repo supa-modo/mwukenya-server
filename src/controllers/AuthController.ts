@@ -99,7 +99,7 @@ const registerSchema = Joi.object({
       "string.pattern.base":
         "Other names should only contain letters and spaces",
     }),
-  email: Joi.string().email().optional().messages({
+  email: Joi.string().email().allow("").optional().messages({
     "string.email": "Email must be a valid email address",
   }),
   phoneNumber: Joi.string()

@@ -515,7 +515,7 @@ export class AuthService {
         if (existingUser.idNumber === userData.idNumber) {
           throw ApiError.duplicate("ID number");
         }
-        if (existingUser.email === userData.email) {
+        if (userData.email && existingUser.email === userData.email) {
           throw ApiError.duplicate("Email address");
         }
       }

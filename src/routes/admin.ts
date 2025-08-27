@@ -14,6 +14,7 @@ router.use(authenticate);
 // User management routes
 router.get("/users", AdminController.getAllUsers);
 router.get("/users/stats", AdminController.getUserStats);
+router.get("/users/:id", AdminController.getUserById);
 router.post("/users", AdminController.createUser);
 router.put("/users/:id", AdminController.updateUser);
 router.delete("/users/:id", AdminController.deleteUser);

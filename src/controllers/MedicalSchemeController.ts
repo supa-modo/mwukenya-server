@@ -26,7 +26,7 @@ export class MedicalSchemeController {
       const filters = {
         search: search as string,
         coverageType: coverageType as CoverageType,
-        isActive: isActive ? isActive === "true" : undefined,
+        isActive: isActive ? isActive === "true" : undefined, // Don't filter by active status by default
       };
 
       const pagination = {
@@ -294,4 +294,3 @@ export class MedicalSchemeController {
     }
   };
 }
-

@@ -210,20 +210,30 @@ class User
 
   public static generateDelegateCode(): string {
     const prefix = "DEL";
-    const timestamp = Date.now().toString().slice(-6);
-    const random = Math.floor(Math.random() * 100)
+    // Generate 3 random numbers (000-999)
+    const numbers = Math.floor(Math.random() * 1000)
       .toString()
-      .padStart(2, "0");
-    return `${prefix}${timestamp}${random}`;
+      .padStart(3, "0");
+    // Generate 1 random letter (A-Z, excluding I and O)
+    const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+    const letter = letters.charAt(Math.floor(Math.random() * letters.length));
+    // Generate 1 random number (0-9)
+    const lastNumber = Math.floor(Math.random() * 10).toString();
+    return `${prefix}${numbers}${letter}${lastNumber}`;
   }
 
   public static generateCoordinatorCode(): string {
     const prefix = "CRD";
-    const timestamp = Date.now().toString().slice(-6);
-    const random = Math.floor(Math.random() * 100)
+    // Generate 3 random numbers (000-999)
+    const numbers = Math.floor(Math.random() * 1000)
       .toString()
-      .padStart(2, "0");
-    return `${prefix}${timestamp}${random}`;
+      .padStart(3, "0");
+    // Generate 1 random letter (A-Z, excluding I and O)
+    const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+    const letter = letters.charAt(Math.floor(Math.random() * letters.length));
+    // Generate 1 random number (0-9)
+    const lastNumber = Math.floor(Math.random() * 10).toString();
+    return `${prefix}${numbers}${letter}${lastNumber}`;
   }
 
   public static formatPhoneNumber(phoneNumber: string): string {
@@ -286,10 +296,16 @@ User.init(
     email: {
       type: DataTypes.STRING(255),
       allowNull: true,
-      unique: true,
       validate: {
-        isEmail: true,
-        notEmpty: false, // Allow empty for users without email
+        customValidator(value: string) {
+          // Only validate email format if value is provided and not empty
+          if (value && value.trim() !== "") {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(value)) {
+              throw new Error("Please provide a valid email address");
+            }
+          }
+        },
       },
     },
     phoneNumber: {
@@ -445,15 +461,7 @@ User.init(
         unique: true,
         fields: ["phoneNumber"],
       },
-      {
-        unique: true,
-        fields: ["email"],
-        where: {
-          email: {
-            [Op.ne]: null,
-          },
-        },
-      },
+
       {
         unique: true,
         fields: ["idNumber"],
