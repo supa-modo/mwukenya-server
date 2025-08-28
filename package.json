@@ -15,6 +15,7 @@
     "db:seed": "ts-node -r tsconfig-paths/register src/seeders/index.ts",
     "db:seed:users": "ts-node -r tsconfig-paths/register src/seeders/userSeeder.ts",
     "db:seed:schemes": "ts-node -r tsconfig-paths/register src/seeders/medicalSchemeSeeder.ts",
+    "db:seed:test": "ts-node -r tsconfig-paths/register src/seeders/testDataSeeder.ts",
     "db:reset": "ts-node -r tsconfig-paths/register src/scripts/resetDatabase.ts",
     "logs:clear": "rm -rf logs/*",
     "typecheck": "tsc --noEmit",

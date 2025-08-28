@@ -6,6 +6,7 @@ dotenv.config();
 import sequelize from "../config/database";
 import { seedUsers } from "./userSeeder";
 import { seedMedicalSchemes } from "./medicalSchemeSeeder";
+import { seedTestData } from "./testDataSeeder";
 import logger from "../utils/logger";
 import { config } from "../config";
 
@@ -39,6 +40,14 @@ export async function runSeeders() {
     // Run seeders in order (dependencies first)
     await seedUsers(transaction);
     await seedMedicalSchemes(transaction);
+
+    // Run test data seeder for development/testing
+    if (
+      process.env.NODE_ENV === "development" ||
+      process.env.NODE_ENV === "test"
+    ) {
+      await seedTestData(transaction);
+    }
 
     await transaction.commit();
     logger.info("Database seeding completed successfully");
