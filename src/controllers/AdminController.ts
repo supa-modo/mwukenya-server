@@ -19,6 +19,11 @@ export class AdminController {
         role = "",
         sortBy = "createdAt",
         sortOrder = "DESC",
+        county = "",
+        startDate = "",
+        endDate = "",
+        delegateId = "",
+        coordinatorId = "",
       } = req.query;
 
       const pageNumber = parseInt(page as string);
@@ -36,6 +41,32 @@ export class AdminController {
         whereClause.role = role;
       }
 
+      if (county && county !== "") {
+        whereClause.county = county;
+      }
+
+      if (delegateId && delegateId !== "") {
+        whereClause.delegateId = delegateId;
+      }
+
+      if (coordinatorId && coordinatorId !== "") {
+        whereClause.coordinatorId = coordinatorId;
+      }
+
+      // Add date range filtering
+      if (startDate || endDate) {
+        whereClause.createdAt = {};
+        if (startDate) {
+          whereClause.createdAt[Op.gte] = new Date(startDate as string);
+        }
+        if (endDate) {
+          // Set end date to end of day for inclusive filtering
+          const endDateTime = new Date(endDate as string);
+          endDateTime.setHours(23, 59, 59, 999);
+          whereClause.createdAt[Op.lte] = endDateTime;
+        }
+      }
+
       // Build search conditions
       const searchConditions = [];
       if (search && typeof search === "string" && search.trim() !== "") {
@@ -46,7 +77,8 @@ export class AdminController {
           { email: { [Op.iLike]: `%${search}%` } },
           { phoneNumber: { [Op.iLike]: `%${search}%` } },
           { idNumber: { [Op.iLike]: `%${search}%` } },
-          { membershipNumber: { [Op.iLike]: `%${search}%` } }
+          { membershipNumber: { [Op.iLike]: `%${search}%` } },
+          { route: { [Op.iLike]: `%${search}%` } }
         );
       }
 
