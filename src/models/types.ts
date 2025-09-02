@@ -1,7 +1,7 @@
 // TypeScript Type Definitions for MWU Kenya Digital Platform
 
 // Enums matching database types
-export enum   UserRole {
+export enum UserRole {
   MEMBER = "member",
   DELEGATE = "delegate",
   COORDINATOR = "coordinator",
@@ -194,7 +194,7 @@ export interface MemberSubscriptionCreationAttributes
 export interface PaymentAttributes {
   id: string;
   userId: string;
-  subscriptionId: string;
+  subscriptionId: string | null;
   amount: number;
   paymentDate: Date;
   paymentMethod: string;
@@ -210,6 +210,23 @@ export interface PaymentAttributes {
   commissionCoordinatorId?: string;
   processedAt?: Date;
   processorId?: string;
+
+  // M-Pesa specific fields
+  mpesaReceiptNumber?: string;
+  mpesaTransactionId?: string;
+  mpesaCheckoutRequestId?: string;
+  mpesaResultCode?: number;
+  mpesaResultDescription?: string;
+  mpesaPhoneNumber?: string;
+  mpesaAccountReference?: string;
+  mpesaTransactionDescription?: string;
+  callbackReceived?: boolean;
+  callbackReceivedAt?: Date;
+
+  // Commission calculation fields
+  mwuPortion?: number;
+  totalCommissions?: number;
+
   createdAt: Date;
   updatedAt: Date;
 }

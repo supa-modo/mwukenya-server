@@ -351,3 +351,36 @@ export const requireHierarchicalAccess = async (
     });
   }
 };
+
+/**
+ * Role-based access control middleware
+ */
+export const requireRole = (allowedRoles: UserRole[]) => {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        error: {
+          code: "AUTH_001",
+          message: "Authentication required",
+        },
+        timestamp: new Date().toISOString(),
+      });
+      return;
+    }
+
+    if (!allowedRoles.includes(req.user.role)) {
+      res.status(403).json({
+        success: false,
+        error: {
+          code: "AUTH_002",
+          message: "Insufficient permissions",
+        },
+        timestamp: new Date().toISOString(),
+      });
+      return;
+    }
+
+    next();
+  };
+};

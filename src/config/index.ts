@@ -162,6 +162,7 @@ export const config = {
       environment: process.env.MPESA_ENVIRONMENT || "sandbox",
       paybillNumber: process.env.MPESA_PAYBILL_NUMBER || "400200",
       passkey: process.env.MPESA_PASSKEY || "",
+      callbackUrl: process.env.MPESA_CALLBACK_URL || "",
     },
     africasTalking: {
       apiKey: process.env.AFRICAS_TALKING_API_KEY || "",

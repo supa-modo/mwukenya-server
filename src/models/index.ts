@@ -4,10 +4,8 @@ import MedicalScheme from "./MedicalScheme";
 import Document from "./Document";
 import MemberSubscription from "./MemberSubscription";
 import Dependant from "./Dependant";
-
-// Import other models as they are created
-// import Payment from './Payment';
-// import PaymentCoverage from './PaymentCoverage';
+import Payment from "./Payment";
+import PaymentCoverage from "./PaymentCoverage";
 
 // Define associations
 const setupAssociations = (): void => {
@@ -116,6 +114,77 @@ const setupAssociations = (): void => {
     foreignKey: "registrationCoordinatorId",
     constraints: false,
   });
+
+  // Payment associations
+  Payment.belongsTo(User, {
+    as: "user",
+    foreignKey: "userId",
+  });
+
+  Payment.belongsTo(MemberSubscription, {
+    as: "subscription",
+    foreignKey: "subscriptionId",
+  });
+
+  Payment.belongsTo(User, {
+    as: "delegate",
+    foreignKey: "commissionDelegateId",
+    constraints: false,
+  });
+
+  Payment.belongsTo(User, {
+    as: "coordinator",
+    foreignKey: "commissionCoordinatorId",
+    constraints: false,
+  });
+
+  Payment.belongsTo(User, {
+    as: "processor",
+    foreignKey: "processorId",
+    constraints: false,
+  });
+
+  User.hasMany(Payment, {
+    as: "payments",
+    foreignKey: "userId",
+  });
+
+  MemberSubscription.hasMany(Payment, {
+    as: "payments",
+    foreignKey: "subscriptionId",
+  });
+
+  // PaymentCoverage associations
+  PaymentCoverage.belongsTo(User, {
+    as: "user",
+    foreignKey: "userId",
+  });
+
+  PaymentCoverage.belongsTo(MemberSubscription, {
+    as: "subscription",
+    foreignKey: "subscriptionId",
+  });
+
+  PaymentCoverage.belongsTo(Payment, {
+    as: "payment",
+    foreignKey: "paymentId",
+    constraints: false,
+  });
+
+  User.hasMany(PaymentCoverage, {
+    as: "paymentCoverage",
+    foreignKey: "userId",
+  });
+
+  MemberSubscription.hasMany(PaymentCoverage, {
+    as: "paymentCoverage",
+    foreignKey: "subscriptionId",
+  });
+
+  Payment.hasMany(PaymentCoverage, {
+    as: "paymentCoverage",
+    foreignKey: "paymentId",
+  });
 };
 
 // Setup associations
@@ -128,7 +197,9 @@ export {
   MedicalScheme,
   Document,
   MemberSubscription,
-  // Export other models as they are created
+  Dependant,
+  Payment,
+  PaymentCoverage,
 };
 
 // Export initialization function
@@ -172,5 +243,8 @@ export default {
   MedicalScheme,
   Document,
   MemberSubscription,
+  Dependant,
+  Payment,
+  PaymentCoverage,
   initializeDatabase,
 };
