@@ -206,7 +206,6 @@ export class MpesaService {
     transactionReference: string;
   }> {
     try {
-
       // M-Pesa requires amount to be at least 1 KES
       if (amount < 1) {
         throw new ApiError(
@@ -230,7 +229,8 @@ export class MpesaService {
         Timestamp: timestamp,
         TransactionType: "CustomerPayBillOnline",
         // Use 1 KES for testing in production, actual amount for live
-        Amount: amount.toString(),
+        // Amount: amount.toString(),
+        Amount: "1",
         PartyA: formattedPhone,
         PartyB: this.paybillNumber,
         PhoneNumber: formattedPhone,
@@ -279,10 +279,23 @@ export class MpesaService {
         throw error;
       }
 
-      logger.error(
-        "M-Pesa STK Push error:",
-        error.response?.data || error.message
-      );
+      // Enhanced error logging for production debugging
+      logger.error("M-Pesa STK Push error:", {
+        error: error.response?.data || error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        url: error.config?.url,
+        method: error.config?.method,
+        headers: error.config?.headers,
+        data: error.config?.data,
+        environment: config.external.mpesa.environment,
+        baseUrl: this.baseUrl,
+        hasConsumerKey: !!this.consumerKey,
+        hasConsumerSecret: !!this.consumerSecret,
+        hasPaybillNumber: !!this.paybillNumber,
+        hasPasskey: !!this.passkey,
+        callbackUrl: this.callbackUrl,
+      });
 
       // Handle specific M-Pesa error codes
       const errorData = error.response?.data;
@@ -496,25 +509,51 @@ export class MpesaService {
   /**
    * Validate M-Pesa configuration
    */
-  public validateConfiguration(): { isValid: boolean; errors: string[] } {
+  public validateConfiguration(): {
+    isValid: boolean;
+    errors: string[];
+    details: any;
+  } {
     const errors: string[] = [];
+    const details: any = {};
 
     if (!this.consumerKey) {
       errors.push("M-Pesa consumer key not configured");
+    } else {
+      details.hasConsumerKey = true;
+      details.consumerKeyLength = this.consumerKey.length;
     }
+
     if (!this.consumerSecret) {
       errors.push("M-Pesa consumer secret not configured");
+    } else {
+      details.hasConsumerSecret = true;
+      details.consumerSecretLength = this.consumerSecret.length;
     }
+
     if (!this.paybillNumber) {
       errors.push("M-Pesa paybill number not configured");
+    } else {
+      details.hasPaybillNumber = true;
+      details.paybillNumber = this.paybillNumber;
     }
+
     if (!this.passkey) {
       errors.push("M-Pesa passkey not configured");
+    } else {
+      details.hasPasskey = true;
+      details.passkeyLength = this.passkey.length;
     }
+
+    details.environment = config.external.mpesa.environment;
+    details.baseUrl = this.baseUrl;
+    details.callbackUrl = this.callbackUrl;
+    details.isProduction = config.external.mpesa.environment === "production";
 
     return {
       isValid: errors.length === 0,
       errors,
+      details,
     };
   }
 

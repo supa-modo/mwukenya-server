@@ -11,13 +11,18 @@ export class PaymentController {
   /**
    * Initiate a new payment
    */
-  public static async initiatePayment(req: Request, res: Response): Promise<void> {
+  public static async initiatePayment(
+    req: Request,
+    res: Response
+  ): Promise<void> {
     try {
       // Validate request body
       const schema = Joi.object({
         subscriptionId: Joi.string().uuid().required(),
         amount: Joi.number().min(1).max(100000).required(),
-        phoneNumber: Joi.string().pattern(/^(\+?254|0)?[17]\d{8}$/).required(),
+        phoneNumber: Joi.string()
+          .pattern(/^(\+?254|0)?[17]\d{8}$/)
+          .required(),
         paymentMethod: Joi.string().valid("mpesa").default("mpesa"),
         daysCovered: Joi.number().integer().min(1).max(365).optional(),
         description: Joi.string().max(255).optional(),
@@ -25,11 +30,7 @@ export class PaymentController {
 
       const { error, value } = schema.validate(req.body);
       if (error) {
-        throw new ApiError(
-          error.details[0].message,
-          "VALIDATION_ERROR",
-          400
-        );
+        throw new ApiError(error.details[0].message, "VALIDATION_ERROR", 400);
       }
 
       const userId = req.user?.id;
@@ -50,7 +51,6 @@ export class PaymentController {
         message: "Payment initiated successfully",
         timestamp: new Date().toISOString(),
       });
-
     } catch (error: any) {
       logger.error("Error initiating payment:", error);
 
@@ -79,7 +79,10 @@ export class PaymentController {
   /**
    * Get payment status
    */
-  public static async getPaymentStatus(req: Request, res: Response): Promise<void> {
+  public static async getPaymentStatus(
+    req: Request,
+    res: Response
+  ): Promise<void> {
     try {
       const { paymentId } = req.params;
 
@@ -95,7 +98,11 @@ export class PaymentController {
       const payment = await PaymentService.getPaymentStatus(paymentId);
 
       // Ensure user can only access their own payments
-      if (payment.userId !== userId && req.user?.role !== "admin" && req.user?.role !== "superadmin") {
+      if (
+        payment.userId !== userId &&
+        req.user?.role !== "admin" &&
+        req.user?.role !== "superadmin"
+      ) {
         throw new ApiError("Access denied", "FORBIDDEN", 403);
       }
 
@@ -105,7 +112,6 @@ export class PaymentController {
         message: "Payment status retrieved successfully",
         timestamp: new Date().toISOString(),
       });
-
     } catch (error: any) {
       logger.error("Error getting payment status:", error);
 
@@ -134,12 +140,19 @@ export class PaymentController {
   /**
    * Query M-Pesa transaction status
    */
-  public static async queryMpesaStatus(req: Request, res: Response): Promise<void> {
+  public static async queryMpesaStatus(
+    req: Request,
+    res: Response
+  ): Promise<void> {
     try {
       const { checkoutRequestId } = req.params;
 
       if (!checkoutRequestId) {
-        throw new ApiError("Checkout Request ID is required", "MISSING_CHECKOUT_REQUEST_ID", 400);
+        throw new ApiError(
+          "Checkout Request ID is required",
+          "MISSING_CHECKOUT_REQUEST_ID",
+          400
+        );
       }
 
       const userId = req.user?.id;
@@ -148,12 +161,18 @@ export class PaymentController {
       }
 
       // Find payment to verify ownership
-      const payment = await Payment.findByMpesaCheckoutRequestId(checkoutRequestId);
+      const payment = await Payment.findByMpesaCheckoutRequestId(
+        checkoutRequestId
+      );
       if (!payment) {
         throw new ApiError("Payment not found", "PAYMENT_NOT_FOUND", 404);
       }
 
-      if (payment.userId !== userId && req.user?.role !== "admin" && req.user?.role !== "superadmin") {
+      if (
+        payment.userId !== userId &&
+        req.user?.role !== "admin" &&
+        req.user?.role !== "superadmin"
+      ) {
         throw new ApiError("Access denied", "FORBIDDEN", 403);
       }
 
@@ -169,7 +188,6 @@ export class PaymentController {
         message: "M-Pesa status retrieved successfully",
         timestamp: new Date().toISOString(),
       });
-
     } catch (error: any) {
       logger.error("Error querying M-Pesa status:", error);
 
@@ -198,7 +216,10 @@ export class PaymentController {
   /**
    * Get user payment history
    */
-  public static async getPaymentHistory(req: Request, res: Response): Promise<void> {
+  public static async getPaymentHistory(
+    req: Request,
+    res: Response
+  ): Promise<void> {
     try {
       const userId = req.user?.id;
       if (!userId) {
@@ -209,10 +230,18 @@ export class PaymentController {
       const limit = parseInt(req.query.limit as string) || 20;
 
       if (page < 1 || limit < 1 || limit > 100) {
-        throw new ApiError("Invalid pagination parameters", "INVALID_PAGINATION", 400);
+        throw new ApiError(
+          "Invalid pagination parameters",
+          "INVALID_PAGINATION",
+          400
+        );
       }
 
-      const result = await PaymentService.getUserPaymentHistory(userId, page, limit);
+      const result = await PaymentService.getUserPaymentHistory(
+        userId,
+        page,
+        limit
+      );
 
       res.status(200).json({
         success: true,
@@ -221,7 +250,6 @@ export class PaymentController {
         message: "Payment history retrieved successfully",
         timestamp: new Date().toISOString(),
       });
-
     } catch (error: any) {
       logger.error("Error getting payment history:", error);
 
@@ -250,7 +278,10 @@ export class PaymentController {
   /**
    * Get payment coverage status
    */
-  public static async getPaymentCoverage(req: Request, res: Response): Promise<void> {
+  public static async getPaymentCoverage(
+    req: Request,
+    res: Response
+  ): Promise<void> {
     try {
       const userId = req.user?.id;
       if (!userId) {
@@ -259,13 +290,17 @@ export class PaymentController {
 
       const { subscriptionId } = req.params;
       if (!subscriptionId) {
-        throw new ApiError("Subscription ID is required", "MISSING_SUBSCRIPTION_ID", 400);
+        throw new ApiError(
+          "Subscription ID is required",
+          "MISSING_SUBSCRIPTION_ID",
+          400
+        );
       }
 
-      const startDate = req.query.startDate 
+      const startDate = req.query.startDate
         ? new Date(req.query.startDate as string)
         : undefined;
-      const endDate = req.query.endDate 
+      const endDate = req.query.endDate
         ? new Date(req.query.endDate as string)
         : undefined;
 
@@ -282,7 +317,6 @@ export class PaymentController {
         message: "Payment coverage retrieved successfully",
         timestamp: new Date().toISOString(),
       });
-
     } catch (error: any) {
       logger.error("Error getting payment coverage:", error);
 
@@ -311,9 +345,15 @@ export class PaymentController {
   /**
    * Handle M-Pesa callback
    */
-  public static async handleMpesaCallback(req: Request, res: Response): Promise<void> {
+  public static async handleMpesaCallback(
+    req: Request,
+    res: Response
+  ): Promise<void> {
     try {
-      logger.info("Received M-Pesa callback:", JSON.stringify(req.body, null, 2));
+      logger.info(
+        "Received M-Pesa callback:",
+        JSON.stringify(req.body, null, 2)
+      );
 
       // Validate callback structure
       if (!req.body?.Body?.stkCallback) {
@@ -329,20 +369,18 @@ export class PaymentController {
       }
 
       // Process callback asynchronously
-      MpesaService.processCallback(req.body)
-        .catch((error) => {
-          logger.error("Error in callback processing:", error);
-        });
+      MpesaService.processCallback(req.body).catch((error) => {
+        logger.error("Error in callback processing:", error);
+      });
 
       // Always respond with success to M-Pesa
       res.status(200).json({
         ResultCode: 0,
         ResultDesc: "Callback received successfully",
       });
-
     } catch (error: any) {
       logger.error("Error handling M-Pesa callback:", error);
-      
+
       // Always respond with success to avoid retries
       res.status(200).json({
         ResultCode: 0,
@@ -354,7 +392,10 @@ export class PaymentController {
   /**
    * Manual payment verification (for failed callbacks)
    */
-  public static async verifyPayment(req: Request, res: Response): Promise<void> {
+  public static async verifyPayment(
+    req: Request,
+    res: Response
+  ): Promise<void> {
     try {
       const schema = Joi.object({
         transactionReference: Joi.string().required(),
@@ -363,11 +404,7 @@ export class PaymentController {
 
       const { error, value } = schema.validate(req.body);
       if (error) {
-        throw new ApiError(
-          error.details[0].message,
-          "VALIDATION_ERROR",
-          400
-        );
+        throw new ApiError(error.details[0].message, "VALIDATION_ERROR", 400);
       }
 
       const userId = req.user?.id;
@@ -378,19 +415,29 @@ export class PaymentController {
       const { transactionReference, mpesaReceiptNumber } = value;
 
       // Find payment
-      const payment = await Payment.findByTransactionReference(transactionReference);
+      const payment = await Payment.findByTransactionReference(
+        transactionReference
+      );
       if (!payment) {
         throw new ApiError("Payment not found", "PAYMENT_NOT_FOUND", 404);
       }
 
       // Verify ownership
-      if (payment.userId !== userId && req.user?.role !== "admin" && req.user?.role !== "superadmin") {
+      if (
+        payment.userId !== userId &&
+        req.user?.role !== "admin" &&
+        req.user?.role !== "superadmin"
+      ) {
         throw new ApiError("Access denied", "FORBIDDEN", 403);
       }
 
       // Check if already completed
       if (payment.paymentStatus === PaymentStatus.COMPLETED) {
-        throw new ApiError("Payment already completed", "PAYMENT_ALREADY_COMPLETED", 400);
+        throw new ApiError(
+          "Payment already completed",
+          "PAYMENT_ALREADY_COMPLETED",
+          400
+        );
       }
 
       // Complete payment
@@ -406,7 +453,6 @@ export class PaymentController {
         message: "Payment verified successfully",
         timestamp: new Date().toISOString(),
       });
-
     } catch (error: any) {
       logger.error("Error verifying payment:", error);
 
@@ -435,22 +481,31 @@ export class PaymentController {
   /**
    * Test M-Pesa connection (Admin only)
    */
-  public static async testMpesaConnection(req: Request, res: Response): Promise<void> {
+  public static async testMpesaConnection(
+    req: Request,
+    res: Response
+  ): Promise<void> {
     try {
       // Check admin access
       if (req.user?.role !== "admin" && req.user?.role !== "superadmin") {
         throw new ApiError("Access denied", "FORBIDDEN", 403);
       }
 
-      const result = await MpesaService.testConnection();
+      // Get detailed configuration validation
+      const configValidation = MpesaService.validateConfiguration();
+      const connectionTest = await MpesaService.testConnection();
 
       res.status(200).json({
         success: true,
-        data: result,
-        message: "M-Pesa connection test completed",
+        data: {
+          connection: connectionTest,
+          configuration: configValidation,
+          environment: process.env.NODE_ENV,
+          timestamp: new Date().toISOString(),
+        },
+        message: "M-Pesa configuration and connection test completed",
         timestamp: new Date().toISOString(),
       });
-
     } catch (error: any) {
       logger.error("Error testing M-Pesa connection:", error);
 
@@ -459,6 +514,7 @@ export class PaymentController {
         error: {
           code: "MPESA_TEST_ERROR",
           message: "Failed to test M-Pesa connection",
+          details: error.message,
         },
         timestamp: new Date().toISOString(),
       });
