@@ -19,7 +19,9 @@
     "db:reset": "ts-node -r tsconfig-paths/register src/scripts/resetDatabase.ts",
     "logs:clear": "rm -rf logs/*",
     "typecheck": "tsc --noEmit",
-    "test:zoho": "ts-node -r tsconfig-paths/register src/scripts/test-zoho-email.ts"
+    "test:zoho": "ts-node -r tsconfig-paths/register src/scripts/test-zoho-email.ts",
+    "mpesa:diagnostic": "node scripts/mpesa-diagnostic.js",
+    "mpesa:debug": "node scripts/debug-mpesa-stk.js"
   },
   "keywords": [
     "payments",

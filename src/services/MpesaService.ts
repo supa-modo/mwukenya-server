@@ -217,6 +217,24 @@ export class MpesaService {
         );
       }
 
+      // Ensure amount is a valid number and properly formatted
+      if (isNaN(amount) || amount <= 0) {
+        throw new ApiError(
+          "Invalid amount. Please enter a valid amount greater than 0.",
+          "INVALID_AMOUNT",
+          400
+        );
+      }
+
+      // Ensure amount is an integer (M-Pesa doesn't accept decimals)
+      const roundedAmount = Math.round(amount);
+      if (roundedAmount !== amount) {
+        logger.warn("Amount rounded to nearest integer:", {
+          originalAmount: amount,
+          roundedAmount: roundedAmount,
+        });
+      }
+
       const accessToken = await this.getAccessToken();
       const formattedPhone = this.formatPhoneNumber(phoneNumber);
       const { password, timestamp } = this.generatePassword();
@@ -230,7 +248,7 @@ export class MpesaService {
         Password: password,
         Timestamp: timestamp,
         TransactionType: "CustomerPayBillOnline",
-        Amount: amount.toString(),
+        Amount: Math.round(amount).toString(), // Ensure integer amount
         PartyA: formattedPhone,
         PartyB: this.paybillNumber,
         PhoneNumber: formattedPhone,
@@ -305,15 +323,46 @@ export class MpesaService {
       // Handle specific M-Pesa error codes
       const errorData = error.response?.data;
       if (errorData?.errorCode) {
+        logger.error("M-Pesa specific error code received:", {
+          errorCode: errorData.errorCode,
+          errorMessage: errorData.errorMessage,
+          fullResponse: errorData,
+        });
+
         const errorMessage = this.getMpesaErrorMessage(errorData.errorCode);
         throw new ApiError(errorMessage, "MPESA_ERROR", 400);
+      }
+
+      // Handle ResponseCode errors (different from errorCode)
+      if (errorData?.ResponseCode && errorData.ResponseCode !== "0") {
+        logger.error("M-Pesa ResponseCode error:", {
+          responseCode: errorData.ResponseCode,
+          responseDescription: errorData.ResponseDescription,
+          fullResponse: errorData,
+        });
+
+        throw new ApiError(
+          errorData.ResponseDescription || "STK Push failed",
+          "MPESA_STK_PUSH_FAILED",
+          400
+        );
       }
 
       // Handle amount validation errors specifically
       if (
         error.response?.status === 400 &&
-        errorData?.message?.includes("amount")
+        (errorData?.message?.includes("amount") ||
+          errorData?.errorMessage?.includes("amount") ||
+          errorData?.ResponseDescription?.includes("amount"))
       ) {
+        logger.error("M-Pesa amount validation error:", {
+          status: error.response?.status,
+          message: errorData?.message,
+          errorMessage: errorData?.errorMessage,
+          responseDescription: errorData?.ResponseDescription,
+          fullResponse: errorData,
+        });
+
         throw new ApiError(
           "Invalid amount. Please enter a valid amount greater than 0.",
           "INVALID_AMOUNT",
@@ -497,18 +546,40 @@ export class MpesaService {
    */
   private getMpesaErrorMessage(errorCode: string): string {
     const errorMessages: { [key: string]: string } = {
+      // Phone number errors
       "404.001.03": "Invalid phone number. Please check and try again.",
+      "400.008.03": "Invalid phone number format.",
+
+      // Amount errors
+      "400.002.02": "Invalid amount. Please enter a valid amount.",
+      "400.002.03": "Amount too low. Please enter a higher amount.",
+      "400.002.04": "Amount too high. Please enter a lower amount.",
+
+      // Transaction errors
       "500.001.1001": "Unable to lock subscriber. Please try again later.",
       "500.001.1019":
         "Transaction failed. Insufficient funds in your M-Pesa account.",
       "500.001.1032": "Transaction cancelled by user.",
       "500.001.1037": "Transaction timeout. Please try again.",
       "500.001.1025": "Unable to process request. Please try again later.",
-      "400.002.02": "Invalid amount. Please enter a valid amount.",
-      "400.008.03": "Invalid phone number format.",
+
+      // Business shortcode errors
+      "400.001.01": "Invalid business shortcode. Please contact support.",
+      "400.001.02": "Business shortcode not configured.",
+
+      // Authentication errors
+      "401.001.01": "Authentication failed. Please try again.",
+      "401.001.02": "Invalid credentials.",
+
+      // General errors
+      "500.001.1000": "System error. Please try again later.",
+      "500.001.1002": "Service temporarily unavailable.",
     };
 
-    return errorMessages[errorCode] || "Transaction failed. Please try again.";
+    return (
+      errorMessages[errorCode] ||
+      `Transaction failed with error code: ${errorCode}. Please try again.`
+    );
   }
 
   /**

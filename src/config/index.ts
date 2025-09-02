@@ -160,9 +160,10 @@ export const config = {
       consumerKey: process.env.MPESA_CONSUMER_KEY || "",
       consumerSecret: process.env.MPESA_CONSUMER_SECRET || "",
       environment: process.env.MPESA_ENVIRONMENT || "sandbox",
-      paybillNumber: process.env.MPESA_PAYBILL_NUMBER || "400200",
+      paybillNumber: process.env.MPESA_PAYBILL_NUMBER || "174379",
       passkey: process.env.MPESA_PASSKEY || "",
-      callbackUrl: process.env.MPESA_CALLBACK_URL || "",
+      callbackUrl:
+        process.env.MPESA_CALLBACK_URL || "server.mwukenya.co.ke/api/v1/payments/mpesa/callback",
     },
     africasTalking: {
       apiKey: process.env.AFRICAS_TALKING_API_KEY || "",
