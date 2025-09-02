@@ -248,7 +248,9 @@ export class MpesaService {
         Password: password,
         Timestamp: timestamp,
         TransactionType: "CustomerPayBillOnline",
-        Amount: Math.round(amount).toString(), // Ensure integer amount
+        //TODO: Switch to actual amount later for now using 1 KES for testing
+        // Amount: amount.toString(),
+        Amount: "1",
         PartyA: formattedPhone,
         PartyB: this.paybillNumber,
         PhoneNumber: formattedPhone,
