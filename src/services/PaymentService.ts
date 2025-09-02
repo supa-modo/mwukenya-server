@@ -54,11 +54,6 @@ export class PaymentService {
         throw new ApiError("User account is inactive", "USER_INACTIVE", 400);
       }
 
-      // Validate amount
-      //   if (request.amount <= 0) {
-      //     throw new ApiError("Invalid payment amount", "INVALID_AMOUNT", 400);
-      //   }
-
       // Check if user has an active subscription
       let subscription = await MemberSubscription.findOne({
         where: {
@@ -96,6 +91,20 @@ export class PaymentService {
         isNewSubscription = true;
       } else {
         scheme = subscription.scheme;
+      }
+
+      // Validate amount - ensure it's at least the daily premium
+      if (request.amount <= 0) {
+        throw new ApiError("Invalid payment amount", "INVALID_AMOUNT", 400);
+      }
+
+      // Ensure amount is at least the daily premium
+      if (request.amount < scheme.dailyPremium) {
+        throw new ApiError(
+          `Minimum payment amount is ${scheme.dailyPremium} KES`,
+          "AMOUNT_TOO_LOW",
+          400
+        );
       }
 
       // Calculate coverage dates and validate amount
@@ -594,7 +603,7 @@ export class PaymentService {
   }> {
     // Calculate days covered based on amount
     const calculatedDays = Math.floor(amount / dailyPremium);
-    const daysCovered = requestedDays || calculatedDays;
+    const daysCovered = requestedDays || Math.max(calculatedDays, 1); // Ensure at least 1 day
 
     if (daysCovered <= 0) {
       throw new ApiError(

@@ -206,10 +206,12 @@ export class MpesaService {
     transactionReference: string;
   }> {
     try {
-      // M-Pesa requires amount to be at least 1 KES
-      if (amount < 1) {
+      // M-Pesa requires amount to be at least 1 KES in sandbox, 10 KES in production
+      const minAmount =
+        config.external.mpesa.environment === "production" ? 10 : 1;
+      if (amount < minAmount) {
         throw new ApiError(
-          "Amount must be at least 1 KES.",
+          `Amount must be at least ${minAmount} KES in ${config.external.mpesa.environment} environment.`,
           "AMOUNT_TOO_SMALL",
           400
         );
@@ -228,9 +230,7 @@ export class MpesaService {
         Password: password,
         Timestamp: timestamp,
         TransactionType: "CustomerPayBillOnline",
-        // Use 1 KES for testing in production, actual amount for live
-        // Amount: amount.toString(),
-        Amount: "1",
+        Amount: amount.toString(),
         PartyA: formattedPhone,
         PartyB: this.paybillNumber,
         PhoneNumber: formattedPhone,
@@ -295,6 +295,11 @@ export class MpesaService {
         hasPaybillNumber: !!this.paybillNumber,
         hasPasskey: !!this.passkey,
         callbackUrl: this.callbackUrl,
+        // Add more specific error details
+        errorCode: error.response?.data?.errorCode,
+        errorMessage: error.response?.data?.errorMessage,
+        requestId: error.response?.data?.requestId,
+        fullResponse: JSON.stringify(error.response?.data, null, 2),
       });
 
       // Handle specific M-Pesa error codes
