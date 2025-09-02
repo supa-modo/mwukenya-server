@@ -206,14 +206,6 @@ export class MpesaService {
     transactionReference: string;
   }> {
     try {
-      // Validate amount
-      if (!amount || amount <= 0) {
-        throw new ApiError(
-          "Invalid amount. Please enter a valid amount greater than 0.",
-          "INVALID_AMOUNT",
-          400
-        );
-      }
 
       // M-Pesa requires amount to be at least 1 KES
       if (amount < 1) {
@@ -246,15 +238,6 @@ export class MpesaService {
         AccountReference: accountReference,
         TransactionDesc: description,
       };
-
-      logger.info("Initiating M-Pesa STK Push:", {
-        phone: formattedPhone,
-        originalAmount: amount,
-        actualAmount: config.external.mpesa.testMode ? 1 : amount,
-        testMode: config.external.mpesa.testMode,
-        environment: config.external.mpesa.environment,
-        accountReference,
-      });
 
       const response = await axios.post(
         `${this.baseUrl}/mpesa/stkpush/v1/processrequest`,

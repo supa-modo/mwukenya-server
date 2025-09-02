@@ -55,9 +55,9 @@ export class PaymentService {
       }
 
       // Validate amount
-    //   if (request.amount <= 0) {
-    //     throw new ApiError("Invalid payment amount", "INVALID_AMOUNT", 400);
-    //   }
+      //   if (request.amount <= 0) {
+      //     throw new ApiError("Invalid payment amount", "INVALID_AMOUNT", 400);
+      //   }
 
       // Check if user has an active subscription
       let subscription = await MemberSubscription.findOne({

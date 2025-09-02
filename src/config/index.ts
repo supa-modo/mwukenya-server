@@ -163,7 +163,6 @@ export const config = {
       paybillNumber: process.env.MPESA_PAYBILL_NUMBER || "400200",
       passkey: process.env.MPESA_PASSKEY || "",
       callbackUrl: process.env.MPESA_CALLBACK_URL || "",
-      testMode: process.env.MPESA_TEST_MODE === "true", // Use 1 KES for testing
     },
     africasTalking: {
       apiKey: process.env.AFRICAS_TALKING_API_KEY || "",
