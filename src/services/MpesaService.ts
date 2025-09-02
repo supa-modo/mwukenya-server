@@ -238,7 +238,7 @@ export class MpesaService {
         Timestamp: timestamp,
         TransactionType: "CustomerPayBillOnline",
         // Use 1 KES for testing in production, actual amount for live
-        Amount: config.external.mpesa.testMode ? "1" : amount.toString(),
+        Amount: amount.toString(),
         PartyA: formattedPhone,
         PartyB: this.paybillNumber,
         PhoneNumber: formattedPhone,
