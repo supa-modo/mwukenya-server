@@ -20,22 +20,22 @@ jobs:
         with:
           node-version: "18"
           cache: "npm"
-          cache-dependency-path: mwuKenya/server/package-lock.json
+          cache-dependency-path: server/package-lock.json
 
       - name: Install dependencies
-        working-directory: mwuKenya/server
+        working-directory: server
         run: npm ci
 
       - name: Run linting
-        working-directory: mwuKenya/server
+        working-directory: server
         run: npm run lint
 
       - name: Type check
-        working-directory: mwuKenya/server
+        working-directory: server
         run: npm run typecheck
 
       - name: Build application
-        working-directory: mwuKenya/server
+        working-directory: server
         run: npm run build
 
   deploy:
@@ -52,14 +52,14 @@ jobs:
         with:
           node-version: "18"
           cache: "npm"
-          cache-dependency-path: mwuKenya/package-lock.json
+          cache-dependency-path: server/package-lock.json
 
       - name: Install dependencies
-        working-directory: mwuKenya
+        working-directory: server
         run: npm ci
 
       - name: Build application
-        working-directory: mwuKenya
+        working-directory: server
         run: npm run build
 
       - name: Deploy to EC2
@@ -76,7 +76,7 @@ jobs:
             # Pull latest changes
             git pull origin main
 
-            # Install dependencies
+            # Install dependencies for server
             npm ci --only=production
 
             # Build the application

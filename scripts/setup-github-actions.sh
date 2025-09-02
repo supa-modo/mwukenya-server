@@ -132,7 +132,7 @@ fi
 
 # Setup health check
 log "Setting up health check..."
-if curl -f http://localhost:3001/health > /dev/null 2>&1; then
+if curl -f http://localhost:5000/api/v1/health > /dev/null 2>&1; then
     log "Health check endpoint is working"
 else
     warning "Health check endpoint is not responding. Please check your application"
@@ -143,13 +143,13 @@ log "Creating deployment test script..."
 cat > "$APP_DIR/test-deployment.sh" << 'EOF'
 #!/bin/bash
 echo "Testing deployment process..."
-cd /var/www/mwu-kenya/mwuKenya/server
+cd /var/www/mwuKenya
 git status
 echo "Current commit: $(git rev-parse HEAD)"
 echo "PM2 status:"
 pm2 status
 echo "Health check:"
-curl -s http://localhost:3001/health | jq . || echo "Health check failed"
+curl -s http://localhost:5000/api/v1/health | jq . || echo "Health check failed"
 EOF
 
 chmod +x "$APP_DIR/test-deployment.sh"
@@ -166,7 +166,7 @@ else
 fi
 
 # Check application health
-if curl -f http://localhost:3001/health > /dev/null 2>&1; then
+if curl -f http://localhost:5000/api/v1/health > /dev/null 2>&1; then
     log "✅ Application is responding to health checks"
 else
     warning "⚠️ Application is not responding to health checks"
@@ -193,7 +193,7 @@ log "Useful commands:"
 log "- Test deployment: $APP_DIR/test-deployment.sh"
 log "- Check PM2 status: pm2 status"
 log "- View logs: pm2 logs mwu-kenya-server"
-log "- Check health: curl http://localhost:3001/health"
+log "- Check health: curl http://localhost:5000/api/v1/health"
 log ""
 log "For detailed setup instructions, see: GITHUB_ACTIONS_SETUP.md"
 

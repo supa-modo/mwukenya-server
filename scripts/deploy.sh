@@ -7,7 +7,7 @@ set -e  # Exit on any error
 
 # Configuration
 APP_NAME="mwuKenya-server"
-APP_DIR="/var/www/mwuKenya/"
+APP_DIR="/var/www/mwuKenya"
 LOG_FILE="/var/www/mwuKenya/deployment.log"
 BACKUP_DIR="/var/www/mwuKenya/backups"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -104,7 +104,7 @@ pm2 status "$APP_NAME" || error "Application is not running"
 
 # Health check
 log "Performing health check..."
-if curl -f http://localhost:3001/api/v1/health > /dev/null 2>&1; then
+if curl -f http://localhost:5000/api/v1/health > /dev/null 2>&1; then
     log "Health check passed"
 else
     error "Health check failed"

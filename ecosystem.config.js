@@ -2,67 +2,50 @@ module.exports = {
   apps: [
     {
       name: "mwuKenya-server",
-      script: "dist/index.js",
+      script: "./dist/index.js",
       cwd: "/var/www/mwuKenya",
       instances: 1,
       exec_mode: "cluster",
       env: {
-        NODE_ENV: "production",
-        PORT: 3001,
+        NODE_ENV: "development",
+        PORT: 5000,
       },
       env_production: {
         NODE_ENV: "production",
-        PORT: 3001,
+        PORT: 5000,
       },
       // Logging
-      log_file: "/var/www/mwuKenya/logs/combined.log",
-      out_file: "/var/www/mwuKenya/logs/out.log",
-      error_file: "/var/www/mwuKenya/logs/error.log",
+      log_file: "./logs/combined.log",
+      out_file: "./logs/out.log",
+      error_file: "./logs/error.log",
       log_date_format: "YYYY-MM-DD HH:mm:ss Z",
 
       // Process management
-      min_uptime: "10s",
-      max_restarts: 10,
-      restart_delay: 4000,
-
-      // Monitoring
       watch: false,
-      ignore_watch: ["node_modules", "logs", "dist"],
-
-      // Memory and CPU limits
+      ignore_watch: ["node_modules", "logs", ".git"],
       max_memory_restart: "1G",
 
-      // Graceful shutdown
-      kill_timeout: 5000,
-      listen_timeout: 3000,
+      // Auto restart settings
+      autorestart: true,
+      max_restarts: 10,
+      min_uptime: "10s",
 
-      // Health check
+      // Health monitoring
       health_check_grace_period: 3000,
-
-      // Environment variables
-      env_file: ".env",
-
-      // Merge logs
-      merge_logs: true,
-
-      // Source map support
-      source_map_support: true,
-
-      // Node options
-      node_args: "--max-old-space-size=1024",
+      health_check_fatal_exceptions: true,
     },
   ],
 
-  // Deployment configuration
   deploy: {
     production: {
-      user: "ubuntu",
-      host: "localhost",
+      user: "ec2-user",
+      host: ["your-ec2-host"],
       ref: "origin/main",
-      repo: "https://github.com/supa-modo/mwukenya-server.git",
+      repo: "https://github.com/your-username/your-repo.git",
       path: "/var/www/mwuKenya",
       "post-deploy":
-        "npm ci --only=production && npm run build && pm2 restart ecosystem.config.js --env production",
+        "npm ci --only=production && npm run build && pm2 reload ecosystem.config.js --env production",
+      "pre-setup": "mkdir -p /var/www/mwuKenya/logs",
     },
   },
 };
