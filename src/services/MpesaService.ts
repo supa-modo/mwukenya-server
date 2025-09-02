@@ -206,6 +206,24 @@ export class MpesaService {
     transactionReference: string;
   }> {
     try {
+      // Validate amount
+      if (!amount || amount <= 0) {
+        throw new ApiError(
+          "Invalid amount. Please enter a valid amount greater than 0.",
+          "INVALID_AMOUNT",
+          400
+        );
+      }
+
+      // M-Pesa requires amount to be at least 1 KES
+      if (amount < 1) {
+        throw new ApiError(
+          "Amount must be at least 1 KES.",
+          "AMOUNT_TOO_SMALL",
+          400
+        );
+      }
+
       const accessToken = await this.getAccessToken();
       const formattedPhone = this.formatPhoneNumber(phoneNumber);
       const { password, timestamp } = this.generatePassword();
@@ -219,9 +237,8 @@ export class MpesaService {
         Password: password,
         Timestamp: timestamp,
         TransactionType: "CustomerPayBillOnline",
-        //TODO: To change amount to the actual amount when we go live
-        Amount: "1",
-        // Amount: amount.toString(),
+        // Use 1 KES for testing in production, actual amount for live
+        Amount: config.external.mpesa.testMode ? "1" : amount.toString(),
         PartyA: formattedPhone,
         PartyB: this.paybillNumber,
         PhoneNumber: formattedPhone,
@@ -232,7 +249,10 @@ export class MpesaService {
 
       logger.info("Initiating M-Pesa STK Push:", {
         phone: formattedPhone,
-        amount,
+        originalAmount: amount,
+        actualAmount: config.external.mpesa.testMode ? 1 : amount,
+        testMode: config.external.mpesa.testMode,
+        environment: config.external.mpesa.environment,
         accountReference,
       });
 
@@ -286,6 +306,18 @@ export class MpesaService {
       if (errorData?.errorCode) {
         const errorMessage = this.getMpesaErrorMessage(errorData.errorCode);
         throw new ApiError(errorMessage, "MPESA_ERROR", 400);
+      }
+
+      // Handle amount validation errors specifically
+      if (
+        error.response?.status === 400 &&
+        errorData?.message?.includes("amount")
+      ) {
+        throw new ApiError(
+          "Invalid amount. Please enter a valid amount greater than 0.",
+          "INVALID_AMOUNT",
+          400
+        );
       }
 
       throw new ApiError(
