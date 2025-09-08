@@ -1,4 +1,4 @@
-import { DataTypes, Model, Optional } from "sequelize";
+import { DataTypes, Model, Optional, Op } from "sequelize";
 import sequelize from "../config/database";
 
 export interface BankTransferAttributes {
@@ -364,7 +364,7 @@ BankTransfer.init(
         unique: true,
         where: {
           transactionId: {
-            $ne: null,
+            [Op.ne]: null,
           },
         },
       },
