@@ -5,8 +5,8 @@ const syncDatabase = async (): Promise<void> => {
   try {
     logger.info("Starting database synchronization...");
 
-    // Create tables if they don't exist (won't drop existing data)
-    await sequelize.sync({ alter: false });
+    // Create tables if they don't exist and alter existing tables to match models
+    await sequelize.sync({ alter: true });
     logger.info("Database tables synchronized successfully");
 
     logger.info("Database synchronization completed successfully");

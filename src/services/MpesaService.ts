@@ -4,6 +4,7 @@ import logger from "../utils/logger";
 import { ApiError } from "../utils/apiError";
 import Payment from "../models/Payment";
 import { PaymentStatus } from "../models/types";
+import MpesaEncryption from "../utils/mpesaEncryption";
 
 interface MpesaAuthResponse {
   access_token: string;
@@ -414,7 +415,7 @@ export class MpesaService {
       payment.mpesaResultDescription = ResultDesc;
 
       if (ResultCode === 0) {
-        // Payment successful
+        // Payment successful - extract metadata first
         if (CallbackMetadata?.Item) {
           const metadata = this.parseCallbackMetadata(CallbackMetadata.Item);
 
@@ -424,11 +425,17 @@ export class MpesaService {
           payment.mpesaPhoneNumber = metadata.phoneNumber;
         }
 
-        payment.paymentStatus = PaymentStatus.COMPLETED;
-        payment.processedAt = new Date();
+        await payment.save();
 
-        // Calculate commissions
-        await payment.calculateCommissions();
+        // Import PaymentService dynamically to avoid circular dependency
+        const { default: PaymentService } = await import("./PaymentService");
+
+        // Call PaymentService.completePayment to handle subscription creation
+        await PaymentService.completePayment(
+          payment.id,
+          payment.mpesaReceiptNumber,
+          payment.mpesaTransactionId
+        );
 
         logger.info("Payment completed successfully:", {
           paymentId: payment.id,
@@ -438,6 +445,9 @@ export class MpesaService {
       } else {
         // Payment failed
         payment.paymentStatus = PaymentStatus.FAILED;
+        payment.mpesaResultDescription = ResultDesc;
+
+        await payment.save();
 
         logger.warn("Payment failed:", {
           paymentId: payment.id,
@@ -445,8 +455,6 @@ export class MpesaService {
           resultDesc: ResultDesc,
         });
       }
-
-      await payment.save();
 
       // TODO: Send notification to user about payment status
       // TODO: Update payment coverage records
@@ -458,7 +466,7 @@ export class MpesaService {
   }
 
   /**
-   * Query transaction status
+   * Query transaction status using STK Push checkout request ID
    */
   public async queryTransactionStatus(checkoutRequestId: string): Promise<{
     resultCode: string;
@@ -509,6 +517,169 @@ export class MpesaService {
         "MPESA_QUERY_ERROR",
         500
       );
+    }
+  }
+  //TODO: Add transaction verification
+  /**
+   * Verify transaction using M-Pesa Transaction Status API
+   * This is used as a fallback when user enters transaction code manually
+   */
+  public async verifyTransactionByReceiptNumber(
+    transactionId: string,
+    expectedAmount?: number,
+    expectedPhoneNumber?: string
+  ): Promise<{
+    isValid: boolean;
+    transactionDetails?: {
+      transactionId: string;
+      amount: number;
+      phoneNumber: string;
+      transactionDate: string;
+      resultCode: string;
+      resultDesc: string;
+    };
+    error?: string;
+  }> {
+    try {
+      const accessToken = await this.getAccessToken();
+
+      // Generate security credential (placeholder - you need to implement proper encryption)
+      const securityCredential = this.generateSecurityCredential();
+
+      const queryData = {
+        Initiator: config.external.mpesa.initiatorName,
+        SecurityCredential: securityCredential,
+        CommandID: "TransactionStatusQuery",
+        TransactionID: transactionId,
+        PartyA: this.paybillNumber,
+        IdentifierType: "4", // 4 = Shortcode (for Paybill)
+        ResultURL: `${this.callbackUrl}/transaction-status/result`,
+        QueueTimeOutURL: `${this.callbackUrl}/transaction-status/timeout`,
+        Remarks: "Payment verification",
+        Occasion: "PaymentVerification",
+      };
+
+      const response = await axios.post(
+        `${this.baseUrl}/mpesa/transactionstatus/v1/query`,
+        queryData,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          timeout: 30000,
+        }
+      );
+
+      const data = response.data as any;
+
+      if (data.ResponseCode !== "0") {
+        logger.error("M-Pesa transaction verification failed:", data);
+        return {
+          isValid: false,
+          error: data.ResponseDescription || "Transaction verification failed",
+        };
+      }
+
+      logger.info("Transaction verification initiated:", {
+        transactionId,
+        conversationId: data.ConversationID,
+        originatorConversationId: data.OriginatorConversationID,
+      });
+
+      // Note: The actual verification result will come via callback
+      // For now, we'll return a pending status and handle verification via callback
+      // In a production system, you might want to implement a polling mechanism
+      // or store the verification request and wait for the callback
+
+      return {
+        isValid: true,
+        transactionDetails: {
+          transactionId,
+          amount: expectedAmount || 0,
+          phoneNumber: expectedPhoneNumber || "",
+          transactionDate: new Date().toISOString(),
+          resultCode: "0",
+          resultDesc: "Verification initiated - awaiting callback",
+        },
+      };
+    } catch (error: any) {
+      logger.error("Error verifying M-Pesa transaction:", {
+        error: error.response?.data || error.message,
+        transactionId,
+      });
+
+      return {
+        isValid: false,
+        error: "Failed to verify transaction. Please try again.",
+      };
+    }
+  }
+
+  /**
+   * Process transaction status result callback
+   */
+  public async processTransactionStatusResult(resultData: any): Promise<void> {
+    try {
+      const { Result } = resultData;
+      const {
+        ConversationID,
+        OriginatorConversationID,
+        ResultCode,
+        ResultDesc,
+        ResultParameters,
+      } = Result;
+
+      logger.info("Processing transaction status result:", {
+        conversationId: ConversationID,
+        resultCode: ResultCode,
+        resultDesc: ResultDesc,
+      });
+
+      if (ResultCode === 0 && ResultParameters?.ResultParameter) {
+        // Extract transaction details from result parameters
+        const parameters = ResultParameters.ResultParameter;
+        let transactionDetails: any = {};
+
+        for (const param of parameters) {
+          switch (param.Key) {
+            case "TransactionID":
+              transactionDetails.transactionId = param.Value;
+              break;
+            case "Amount":
+              transactionDetails.amount = parseFloat(param.Value);
+              break;
+            case "TransactionDate":
+              transactionDetails.transactionDate = param.Value;
+              break;
+            case "PhoneNumber":
+              transactionDetails.phoneNumber = param.Value;
+              break;
+            case "AccountReference":
+              transactionDetails.accountReference = param.Value;
+              break;
+          }
+        }
+
+        logger.info("Transaction verification successful:", transactionDetails);
+
+        // Import PaymentService dynamically to avoid circular dependency
+        const { default: PaymentService } = await import("./PaymentService");
+
+        // Complete the payment verification
+        await PaymentService.completeTransactionVerification(
+          transactionDetails.transactionId,
+          transactionDetails
+        );
+      } else {
+        logger.warn("Transaction verification failed:", {
+          conversationId: ConversationID,
+          resultCode: ResultCode,
+          resultDesc: ResultDesc,
+        });
+      }
+    } catch (error: any) {
+      logger.error("Error processing transaction status result:", error);
     }
   }
 
@@ -590,11 +761,14 @@ export class MpesaService {
   public validateConfiguration(): {
     isValid: boolean;
     errors: string[];
+    warnings: string[];
     details: any;
   } {
     const errors: string[] = [];
+    const warnings: string[] = [];
     const details: any = {};
 
+    // Basic configuration validation
     if (!this.consumerKey) {
       errors.push("M-Pesa consumer key not configured");
     } else {
@@ -623,16 +797,278 @@ export class MpesaService {
       details.passkeyLength = this.passkey.length;
     }
 
+    // Production configuration validation
+    const productionValidation = MpesaEncryption.validateProductionConfig();
+    errors.push(...productionValidation.errors);
+    warnings.push(...productionValidation.warnings);
+
+    // Additional production checks
+    if (config.external.mpesa.environment === "production") {
+      if (this.paybillNumber === "174379") {
+        warnings.push("Using sandbox paybill number in production environment");
+      }
+
+      if (config.external.mpesa.initiatorName === "testapi") {
+        errors.push("Production initiator name must be configured");
+      }
+    }
+
     details.environment = config.external.mpesa.environment;
     details.baseUrl = this.baseUrl;
     details.callbackUrl = this.callbackUrl;
     details.isProduction = config.external.mpesa.environment === "production";
+    details.initiatorName = config.external.mpesa.initiatorName;
+    details.hasInitiatorPassword = !!config.external.mpesa.initiatorPassword;
+    details.hasPublicKey = !!config.external.mpesa.publicKey;
 
     return {
       isValid: errors.length === 0,
       errors,
+      warnings,
       details,
     };
+  }
+
+  /**
+   * Initiate B2C payment (Business to Customer) for commission payouts
+   */
+  public async initiateB2CPayment(
+    phoneNumber: string,
+    amount: number,
+    remarks: string = "Commission Payout",
+    occasion: string = "Commission"
+  ): Promise<{
+    success: boolean;
+    conversationId: string;
+    originatorConversationId: string;
+    responseCode: string;
+    responseDescription: string;
+  }> {
+    try {
+      // Validate amount - minimum 10 KES for production, 1 KES for sandbox
+      const minAmount =
+        config.external.mpesa.environment === "production" ? 10 : 1;
+      if (amount < minAmount) {
+        throw new ApiError(
+          `B2C payment amount must be at least ${minAmount} KES`,
+          "B2C_AMOUNT_TOO_LOW",
+          400
+        );
+      }
+
+      // Ensure amount is an integer (M-Pesa doesn't accept decimals)
+      const roundedAmount = Math.round(amount);
+
+      const accessToken = await this.getAccessToken();
+      const formattedPhone = this.formatPhoneNumber(phoneNumber);
+
+      const b2cData = {
+        InitiatorName: config.external.mpesa.initiatorName,
+        SecurityCredential: this.generateSecurityCredential(),
+        CommandID: "BusinessPayment",
+        Amount: roundedAmount,
+        PartyA: this.paybillNumber,
+        PartyB: formattedPhone,
+        Remarks: remarks,
+        QueueTimeOutURL: `${config.apiUrl}/api/${config.apiVersion}/payments/mpesa/b2c/timeout`,
+        ResultURL: `${config.apiUrl}/api/${config.apiVersion}/payments/mpesa/b2c/result`,
+        Occasion: occasion,
+      };
+
+      const response = await axios.post(
+        `${this.baseUrl}/mpesa/b2c/v1/paymentrequest`,
+        b2cData,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          timeout: 30000,
+        }
+      );
+
+      const data = response.data as any;
+
+      if (data.ResponseCode !== "0") {
+        logger.error("M-Pesa B2C payment failed:", data);
+        throw new ApiError(
+          data.ResponseDescription || "B2C payment failed",
+          "MPESA_B2C_FAILED",
+          400
+        );
+      }
+
+      logger.info("M-Pesa B2C payment initiated successfully:", {
+        conversationId: data.ConversationID,
+        originatorConversationId: data.OriginatorConversationID,
+        amount: roundedAmount,
+        phoneNumber: formattedPhone,
+      });
+
+      return {
+        success: true,
+        conversationId: data.ConversationID,
+        originatorConversationId: data.OriginatorConversationID,
+        responseCode: data.ResponseCode,
+        responseDescription: data.ResponseDescription,
+      };
+    } catch (error: any) {
+      if (error instanceof ApiError) {
+        throw error;
+      }
+
+      logger.error("M-Pesa B2C payment error:", {
+        error: error.response?.data || error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+      });
+
+      throw new ApiError(
+        "Failed to initiate B2C payment. Please try again.",
+        "MPESA_B2C_ERROR",
+        500
+      );
+    }
+  }
+
+  /**
+   * Process B2C result callback
+   */
+  public async processB2CResult(resultData: any): Promise<void> {
+    try {
+      const { Result } = resultData;
+      const {
+        ConversationID,
+        OriginatorConversationID,
+        ResultCode,
+        ResultDesc,
+        ResultParameters,
+      } = Result;
+
+      logger.info("Processing M-Pesa B2C result:", {
+        conversationId: ConversationID,
+        resultCode: ResultCode,
+        resultDesc: ResultDesc,
+      });
+
+      // Extract result parameters
+      let transactionId: string | undefined;
+      let transactionAmount: number | undefined;
+      let transactionReceipt: string | undefined;
+      let recipientPhoneNumber: string | undefined;
+
+      if (ResultParameters?.ResultParameter) {
+        const parameters = ResultParameters.ResultParameter;
+
+        for (const param of parameters) {
+          switch (param.Key) {
+            case "TransactionID":
+              transactionId = param.Value;
+              break;
+            case "TransactionAmount":
+              transactionAmount = parseFloat(param.Value);
+              break;
+            case "TransactionReceipt":
+              transactionReceipt = param.Value;
+              break;
+            case "ReceiverPartyPublicName":
+              recipientPhoneNumber = param.Value;
+              break;
+          }
+        }
+      }
+
+      // Import CommissionPayoutService dynamically to avoid circular dependency
+      const { default: CommissionPayoutService } = await import(
+        "./CommissionPayoutService"
+      );
+
+      if (ResultCode === 0) {
+        // Payment successful
+        logger.info("B2C payment completed successfully:", {
+          conversationId: ConversationID,
+          transactionId,
+          amount: transactionAmount,
+          receipt: transactionReceipt,
+        });
+
+        // Update the commission payout record
+        await CommissionPayoutService.completePayoutFromCallback(
+          ConversationID,
+          transactionId || "",
+          transactionReceipt || "",
+          transactionAmount || 0
+        );
+      } else {
+        // Payment failed
+        logger.warn("B2C payment failed:", {
+          conversationId: ConversationID,
+          resultCode: ResultCode,
+          resultDesc: ResultDesc,
+        });
+
+        // Mark the payout as failed
+        await CommissionPayoutService.failPayoutFromCallback(
+          ConversationID,
+          ResultCode,
+          ResultDesc
+        );
+      }
+    } catch (error: any) {
+      logger.error("Error processing B2C result:", error);
+    }
+  }
+
+  /**
+   * Process B2C timeout callback
+   */
+  public async processB2CTimeout(timeoutData: any): Promise<void> {
+    try {
+      const { Result } = timeoutData;
+      const {
+        ConversationID,
+        OriginatorConversationID,
+        ResultCode,
+        ResultDesc,
+      } = Result;
+
+      logger.warn("M-Pesa B2C payment timeout:", {
+        conversationId: ConversationID,
+        resultCode: ResultCode,
+        resultDesc: ResultDesc,
+      });
+
+      // Import CommissionPayoutService dynamically to avoid circular dependency
+      const { default: CommissionPayoutService } = await import(
+        "./CommissionPayoutService"
+      );
+
+      // Mark the commission payout as failed due to timeout
+      await CommissionPayoutService.failPayoutFromCallback(
+        ConversationID,
+        ResultCode,
+        `Timeout: ${ResultDesc}`
+      );
+    } catch (error: any) {
+      logger.error("Error processing B2C timeout:", error);
+    }
+  }
+
+  /**
+   * Generate security credential using proper RSA encryption
+   * Uses M-Pesa's public key to encrypt the initiator password
+   */
+  private generateSecurityCredential(): string {
+    try {
+      return MpesaEncryption.getSecurityCredential();
+    } catch (error) {
+      logger.error("Failed to generate security credential:", error);
+      throw new ApiError(
+        "Failed to generate M-Pesa security credential",
+        "MPESA_SECURITY_CREDENTIAL_ERROR",
+        500
+      );
+    }
   }
 
   /**

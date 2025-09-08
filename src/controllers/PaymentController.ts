@@ -390,6 +390,67 @@ export class PaymentController {
   }
 
   /**
+   * Handle M-Pesa Transaction Status result callback
+   */
+  public static async transactionStatusResult(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      logger.info("M-Pesa Transaction Status result received:", req.body);
+
+      // Process the transaction status result
+      await MpesaService.processTransactionStatusResult(req.body);
+
+      // Always respond with success to M-Pesa
+      res.status(200).json({
+        ResultCode: 0,
+        ResultDesc: "Success",
+      });
+    } catch (error: any) {
+      logger.error("Error processing transaction status result:", error);
+
+      // Still respond with success to prevent M-Pesa retries
+      res.status(200).json({
+        ResultCode: 0,
+        ResultDesc: "Success",
+      });
+    }
+  }
+
+  /**
+   * Handle M-Pesa Transaction Status timeout callback
+   */
+  public static async transactionStatusTimeout(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      logger.info("M-Pesa Transaction Status timeout received:", req.body);
+
+      // Log timeout for debugging
+      logger.warn("Transaction status verification timed out:", {
+        body: req.body,
+        timestamp: new Date().toISOString(),
+      });
+
+      // Always respond with success to M-Pesa
+      res.status(200).json({
+        ResultCode: 0,
+        ResultDesc: "Success",
+      });
+    } catch (error: any) {
+      logger.error("Error processing transaction status timeout:", error);
+
+      // Still respond with success to prevent M-Pesa retries
+      res.status(200).json({
+        ResultCode: 0,
+        ResultDesc: "Success",
+      });
+    }
+  }
+
+  /**
    * Manual payment verification (for failed callbacks)
    */
   public static async verifyPayment(
@@ -479,6 +540,225 @@ export class PaymentController {
   }
 
   /**
+   * Secure payment verification using M-Pesa Transaction Status API
+   */
+  public static async verifyPaymentSecure(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      const schema = Joi.object({
+        transactionReference: Joi.string().required(),
+        mpesaReceiptNumber: Joi.string().required(),
+      });
+
+      const { error, value } = schema.validate(req.body);
+      if (error) {
+        throw new ApiError(error.details[0].message, "VALIDATION_ERROR", 400);
+      }
+
+      const userId = req.user?.id;
+      if (!userId) {
+        throw new ApiError("User not authenticated", "UNAUTHORIZED", 401);
+      }
+
+      const { transactionReference, mpesaReceiptNumber } = value;
+
+      // Find payment
+      const payment = await Payment.findByTransactionReference(
+        transactionReference
+      );
+      if (!payment) {
+        throw new ApiError("Payment not found", "PAYMENT_NOT_FOUND", 404);
+      }
+
+      // Verify ownership
+      if (
+        payment.userId !== userId &&
+        req.user?.role !== "admin" &&
+        req.user?.role !== "superadmin"
+      ) {
+        throw new ApiError("Access denied", "FORBIDDEN", 403);
+      }
+
+      // Check if already completed
+      if (payment.paymentStatus === PaymentStatus.COMPLETED) {
+        throw new ApiError(
+          "Payment already completed",
+          "PAYMENT_ALREADY_COMPLETED",
+          400
+        );
+      }
+
+      // Use secure verification with M-Pesa Transaction Status API
+      const verificationResult =
+        await PaymentService.verifyPaymentByReceiptNumber(
+          transactionReference,
+          mpesaReceiptNumber
+        );
+
+      if (!verificationResult.success) {
+        throw new ApiError(
+          verificationResult.message,
+          "VERIFICATION_FAILED",
+          400
+        );
+      }
+
+      res.status(200).json({
+        success: true,
+        data: {
+          payment: verificationResult.payment,
+          paymentId: verificationResult.payment?.id,
+          status: PaymentStatus.COMPLETED,
+          mpesaReceiptNumber,
+        },
+        message: verificationResult.message,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      logger.error("Error verifying payment securely:", error);
+
+      if (error instanceof ApiError) {
+        res.status(error.statusCode).json({
+          success: false,
+          error: {
+            code: error.code,
+            message: error.message,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: {
+            code: "SECURE_VERIFICATION_ERROR",
+            message: "Failed to verify payment securely",
+          },
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
+  }
+
+  /**
+   * Get all payments (Admin only)
+   */
+  public static async getAllPayments(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      // Check admin access
+      if (req.user?.role !== "admin" && req.user?.role !== "superadmin") {
+        throw new ApiError("Access denied", "FORBIDDEN", 403);
+      }
+
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 20;
+      const status = req.query.status as string;
+      const method = req.query.method as string;
+      const search = req.query.search as string;
+      const dateFilter = req.query.dateFilter as string;
+
+      if (page < 1 || limit < 1 || limit > 100) {
+        throw new ApiError(
+          "Invalid pagination parameters",
+          "INVALID_PAGINATION",
+          400
+        );
+      }
+
+      const result = await PaymentService.getAllPayments({
+        page,
+        limit,
+        status,
+        method,
+        search,
+        dateFilter,
+      });
+
+      res.status(200).json({
+        success: true,
+        data: result.payments,
+        pagination: result.pagination,
+        statistics: result.statistics,
+        message: "Payments retrieved successfully",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      logger.error("Error getting all payments:", error);
+
+      if (error instanceof ApiError) {
+        res.status(error.statusCode).json({
+          success: false,
+          error: {
+            code: error.code,
+            message: error.message,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: {
+            code: "ADMIN_PAYMENTS_ERROR",
+            message: "Failed to get payments",
+          },
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
+  }
+
+  /**
+   * Get payment statistics (Admin only)
+   */
+  public static async getPaymentStatistics(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      // Check admin access
+      if (req.user?.role !== "admin" && req.user?.role !== "superadmin") {
+        throw new ApiError("Access denied", "FORBIDDEN", 403);
+      }
+
+      const dateFilter = req.query.dateFilter as string;
+      const stats = await PaymentService.getPaymentStatistics(dateFilter);
+
+      res.status(200).json({
+        success: true,
+        data: stats,
+        message: "Payment statistics retrieved successfully",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      logger.error("Error getting payment statistics:", error);
+
+      if (error instanceof ApiError) {
+        res.status(error.statusCode).json({
+          success: false,
+          error: {
+            code: error.code,
+            message: error.message,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: {
+            code: "PAYMENT_STATS_ERROR",
+            message: "Failed to get payment statistics",
+          },
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
+  }
+
+  /**
    * Test M-Pesa connection (Admin only)
    */
   public static async testMpesaConnection(
@@ -517,6 +797,60 @@ export class PaymentController {
           details: error.message,
         },
         timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  /**
+   * Handle M-Pesa B2C result callback
+   */
+  public static async handleB2CResult(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      logger.info("Received M-Pesa B2C result callback:", req.body);
+
+      await MpesaService.processB2CResult(req.body);
+
+      res.status(200).json({
+        success: true,
+        message: "B2C result processed successfully",
+      });
+    } catch (error: any) {
+      logger.error("Error handling B2C result callback:", error);
+
+      // Always return success to M-Pesa to prevent retries
+      res.status(200).json({
+        success: true,
+        message: "B2C result received",
+      });
+    }
+  }
+
+  /**
+   * Handle M-Pesa B2C timeout callback
+   */
+  public static async handleB2CTimeout(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      logger.info("Received M-Pesa B2C timeout callback:", req.body);
+
+      await MpesaService.processB2CTimeout(req.body);
+
+      res.status(200).json({
+        success: true,
+        message: "B2C timeout processed successfully",
+      });
+    } catch (error: any) {
+      logger.error("Error handling B2C timeout callback:", error);
+
+      // Always return success to M-Pesa to prevent retries
+      res.status(200).json({
+        success: true,
+        message: "B2C timeout received",
       });
     }
   }

@@ -37,6 +37,35 @@ export interface PaymentInitiationResponse {
 
 export class PaymentService {
   /**
+   * Check if payments are currently locked (after 11:00 PM cutoff)
+   */
+  private isPaymentLocked(): boolean {
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+
+    // Lock payments from 11:00 PM to 11:59 PM (23:00 - 23:59)
+    return currentHour === 23;
+  }
+
+  /**
+   * Get the next settlement date for a payment
+   */
+  private getSettlementDate(): Date {
+    const now = new Date();
+    const currentHour = now.getHours();
+
+    // If payment is made after 11:00 PM, it belongs to next day's settlement
+    if (currentHour >= 23) {
+      const nextDay = new Date(now);
+      nextDay.setDate(nextDay.getDate() + 1);
+      return nextDay;
+    }
+
+    return now;
+  }
+
+  /**
    * Initiate a new payment with proper subscription handling
    * Subscriptions are only created AFTER successful payment
    */
@@ -44,6 +73,14 @@ export class PaymentService {
     request: InitiatePaymentRequest
   ): Promise<PaymentInitiationResponse> {
     try {
+      // Check if payments are currently locked
+      if (this.isPaymentLocked()) {
+        throw new ApiError(
+          "Payment system is temporarily locked for daily settlement processing. Please try again after midnight.",
+          "PAYMENT_SYSTEM_LOCKED",
+          423 // Locked status code
+        );
+      }
       // Validate user
       const user = await User.findByPk(request.userId);
       if (!user) {
@@ -121,12 +158,16 @@ export class PaymentService {
         request.userId
       );
 
+      // Get settlement date for this payment
+      const settlementDate = this.getSettlementDate();
+
       // Create payment record (without subscription ID for new subscriptions)
       const payment = await Payment.create({
         userId: request.userId,
         subscriptionId: subscription?.id, // Undefined for new subscriptions
         amount: request.amount,
         paymentDate: new Date(),
+        settlementDate: settlementDate, // Track which settlement this payment belongs to
         paymentMethod: request.paymentMethod,
         transactionReference,
         paymentStatus: PaymentStatus.PENDING,
@@ -142,6 +183,34 @@ export class PaymentService {
           request.description || "MWU Kenya Premium Payment",
         callbackReceived: false,
       });
+
+      // Log payment creation in audit trail
+      try {
+        const { default: AuditTrailService } = await import(
+          "./AuditTrailService"
+        );
+        await AuditTrailService.logPaymentCreated(
+          request.userId,
+          payment.id,
+          {
+            amount: request.amount,
+            paymentMethod: request.paymentMethod,
+            settlementDate: settlementDate,
+            schemeId: scheme.id,
+            isNewSubscription,
+          },
+          {
+            transactionReference,
+            phoneNumber: request.phoneNumber,
+            daysCovered: coverageDates.daysCovered,
+          }
+        );
+      } catch (auditError) {
+        logger.warn(
+          "Failed to log payment creation in audit trail:",
+          auditError
+        );
+      }
 
       // Store scheme ID for new subscriptions (we'll need it when payment succeeds)
       if (isNewSubscription) {
@@ -293,6 +362,34 @@ export class PaymentService {
             schemeId: schemeId,
             paymentId: payment.id,
           });
+
+          // Log subscription creation in audit trail
+          try {
+            const { default: AuditTrailService } = await import(
+              "./AuditTrailService"
+            );
+            await AuditTrailService.logSubscriptionCreated(
+              payment.userId,
+              subscription.id,
+              {
+                schemeId: schemeId,
+                status: SubscriptionStatus.ACTIVE,
+                effectiveDate: payment.coverageStartDate,
+                registrationDelegateId: user.delegateId,
+                registrationCoordinatorId: user.coordinatorId,
+              },
+              {
+                paymentId: payment.id,
+                schemeName: scheme.name,
+                coverageType: scheme.coverageType,
+              }
+            );
+          } catch (auditError) {
+            logger.warn(
+              "Failed to log subscription creation in audit trail:",
+              auditError
+            );
+          }
         }
       }
 
@@ -320,6 +417,34 @@ export class PaymentService {
       }
 
       await transaction.commit();
+
+      // Log payment completion in audit trail
+      try {
+        const { default: AuditTrailService } = await import(
+          "./AuditTrailService"
+        );
+        await AuditTrailService.logPaymentCompleted(
+          payment.userId,
+          paymentId,
+          "pending",
+          "completed",
+          {
+            mpesaReceiptNumber,
+            mpesaTransactionId,
+            amount: payment.amount,
+          },
+          {
+            subscriptionCreated:
+              !payment.subscriptionId && subscription !== null,
+            subscriptionId: subscription?.id || payment.subscriptionId,
+          }
+        );
+      } catch (auditError) {
+        logger.warn(
+          "Failed to log payment completion in audit trail:",
+          auditError
+        );
+      }
 
       logger.info("Payment completed successfully:", {
         paymentId,
@@ -653,6 +778,513 @@ export class PaymentService {
       payment.id,
       payment.amount / payment.daysCovered
     );
+  }
+
+  /**
+   * Get all payments for admin dashboard
+   */
+  public async getAllPayments(options: {
+    page: number;
+    limit: number;
+    status?: string;
+    method?: string;
+    search?: string;
+    dateFilter?: string;
+  }): Promise<{
+    payments: any[];
+    pagination: {
+      currentPage: number;
+      totalPages: number;
+      totalItems: number;
+      itemsPerPage: number;
+    };
+    statistics: {
+      totalAmount: number;
+      completedAmount: number;
+      pendingAmount: number;
+      failedAmount: number;
+      totalTransactions: number;
+      completedTransactions: number;
+      pendingTransactions: number;
+      failedTransactions: number;
+    };
+  }> {
+    const { page, limit, status, method, search, dateFilter } = options;
+    const offset = (page - 1) * limit;
+
+    // Build where clause
+    const whereClause: any = {};
+
+    // Status filter
+    if (status && status !== "all") {
+      whereClause.paymentStatus = status;
+    }
+
+    // Payment method filter
+    if (method && method !== "all") {
+      whereClause.paymentMethod = method;
+    }
+
+    // Date filter
+    if (dateFilter && dateFilter !== "all") {
+      const now = new Date();
+      let startDate: Date;
+
+      switch (dateFilter) {
+        case "today":
+          startDate = startOfDay(now);
+          whereClause.paymentDate = {
+            [Op.gte]: startDate,
+            [Op.lt]: addDays(startDate, 1),
+          };
+          break;
+        case "yesterday":
+          startDate = startOfDay(addDays(now, -1));
+          whereClause.paymentDate = {
+            [Op.gte]: startDate,
+            [Op.lt]: addDays(startDate, 1),
+          };
+          break;
+        case "last_week":
+          startDate = startOfDay(addDays(now, -7));
+          whereClause.paymentDate = {
+            [Op.gte]: startDate,
+          };
+          break;
+        case "last_month":
+          startDate = startOfDay(addDays(now, -30));
+          whereClause.paymentDate = {
+            [Op.gte]: startDate,
+          };
+          break;
+      }
+    }
+
+    // Search filter - only search by membershipNumber, mpesaReceiptNumber, or transactionReference
+    if (search && search.trim()) {
+      const searchTerm = search.trim();
+      whereClause[Op.or] = [
+        { transactionReference: { [Op.iLike]: `%${searchTerm}%` } },
+        { mpesaReceiptNumber: { [Op.iLike]: `%${searchTerm}%` } },
+        { "$user.membershipNumber$": { [Op.iLike]: `%${searchTerm}%` } },
+      ];
+    }
+
+    // Get payments with associations
+    const { rows: payments, count: totalItems } = await Payment.findAndCountAll(
+      {
+        where: whereClause,
+        include: [
+          {
+            model: User,
+            as: "user",
+            attributes: [
+              "id",
+              "firstName",
+              "lastName",
+              "email",
+              "phoneNumber",
+              "membershipNumber",
+            ],
+          },
+          {
+            model: MemberSubscription,
+            as: "subscription",
+            attributes: ["id", "status", "effectiveDate"],
+            include: [
+              {
+                model: MedicalScheme,
+                as: "scheme",
+                attributes: ["id", "name", "dailyPremium"],
+              },
+            ],
+          },
+          {
+            model: User,
+            as: "delegate",
+            attributes: ["id", "firstName", "lastName", "delegateCode"],
+          },
+          {
+            model: User,
+            as: "coordinator",
+            attributes: ["id", "firstName", "lastName", "coordinatorCode"],
+          },
+        ],
+        order: [["paymentDate", "DESC"]],
+        limit,
+        offset,
+        distinct: true,
+      }
+    );
+
+    // Calculate statistics
+    const allPayments = await Payment.findAll({
+      where: whereClause,
+      attributes: ["amount", "paymentStatus"],
+    });
+
+    const statistics = {
+      totalAmount: allPayments.reduce(
+        (sum, p) => sum + parseFloat(p.amount.toString()),
+        0
+      ),
+      completedAmount: allPayments
+        .filter((p) => p.paymentStatus === PaymentStatus.COMPLETED)
+        .reduce((sum, p) => sum + parseFloat(p.amount.toString()), 0),
+      pendingAmount: allPayments
+        .filter((p) => p.paymentStatus === PaymentStatus.PENDING)
+        .reduce((sum, p) => sum + parseFloat(p.amount.toString()), 0),
+      failedAmount: allPayments
+        .filter((p) => p.paymentStatus === PaymentStatus.FAILED)
+        .reduce((sum, p) => sum + parseFloat(p.amount.toString()), 0),
+      totalTransactions: allPayments.length,
+      completedTransactions: allPayments.filter(
+        (p) => p.paymentStatus === PaymentStatus.COMPLETED
+      ).length,
+      pendingTransactions: allPayments.filter(
+        (p) => p.paymentStatus === PaymentStatus.PENDING
+      ).length,
+      failedTransactions: allPayments.filter(
+        (p) => p.paymentStatus === PaymentStatus.FAILED
+      ).length,
+    };
+
+    return {
+      payments,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(totalItems / limit),
+        totalItems,
+        itemsPerPage: limit,
+      },
+      statistics,
+    };
+  }
+
+  /**
+   * Get payment statistics for admin dashboard
+   */
+  public async getPaymentStatistics(dateFilter?: string): Promise<{
+    totalAmount: number;
+    completedAmount: number;
+    pendingAmount: number;
+    failedAmount: number;
+    totalTransactions: number;
+    completedTransactions: number;
+    pendingTransactions: number;
+    failedTransactions: number;
+    averageTransactionAmount: number;
+    totalCommissions: number;
+    shaAmount: number;
+    mwuAmount: number;
+    dailyGrowth: number;
+    weeklyGrowth: number;
+    monthlyGrowth: number;
+  }> {
+    // Build date filter
+    const whereClause: any = {};
+
+    if (dateFilter && dateFilter !== "all") {
+      const now = new Date();
+      let startDate: Date;
+
+      switch (dateFilter) {
+        case "today":
+          startDate = startOfDay(now);
+          whereClause.paymentDate = {
+            [Op.gte]: startDate,
+            [Op.lt]: addDays(startDate, 1),
+          };
+          break;
+        case "yesterday":
+          startDate = startOfDay(addDays(now, -1));
+          whereClause.paymentDate = {
+            [Op.gte]: startDate,
+            [Op.lt]: addDays(startDate, 1),
+          };
+          break;
+        case "last_week":
+          startDate = startOfDay(addDays(now, -7));
+          whereClause.paymentDate = {
+            [Op.gte]: startDate,
+          };
+          break;
+        case "last_month":
+          startDate = startOfDay(addDays(now, -30));
+          whereClause.paymentDate = {
+            [Op.gte]: startDate,
+          };
+          break;
+      }
+    }
+
+    // Get all payments for statistics
+    const payments = await Payment.findAll({
+      where: whereClause,
+      attributes: [
+        "amount",
+        "paymentStatus",
+        "delegateCommission",
+        "coordinatorCommission",
+        "shaPortion",
+        "mwuPortion",
+        "totalCommissions",
+        "paymentDate",
+      ],
+    });
+
+    // Calculate basic statistics
+    const totalAmount = payments.reduce(
+      (sum, p) => sum + parseFloat(p.amount.toString()),
+      0
+    );
+    const completedPayments = payments.filter(
+      (p) => p.paymentStatus === PaymentStatus.COMPLETED
+    );
+    const pendingPayments = payments.filter(
+      (p) => p.paymentStatus === PaymentStatus.PENDING
+    );
+    const failedPayments = payments.filter(
+      (p) => p.paymentStatus === PaymentStatus.FAILED
+    );
+
+    const completedAmount = completedPayments.reduce(
+      (sum, p) => sum + parseFloat(p.amount.toString()),
+      0
+    );
+    const pendingAmount = pendingPayments.reduce(
+      (sum, p) => sum + parseFloat(p.amount.toString()),
+      0
+    );
+    const failedAmount = failedPayments.reduce(
+      (sum, p) => sum + parseFloat(p.amount.toString()),
+      0
+    );
+
+    // Calculate commission statistics
+    const totalCommissions = completedPayments.reduce(
+      (sum, p) => sum + parseFloat(p.totalCommissions?.toString() || "0"),
+      0
+    );
+    const shaAmount = completedPayments.reduce(
+      (sum, p) => sum + parseFloat(p.shaPortion?.toString() || "0"),
+      0
+    );
+    const mwuAmount = completedPayments.reduce(
+      (sum, p) => sum + parseFloat(p.mwuPortion?.toString() || "0"),
+      0
+    );
+
+    // Calculate growth rates (simplified)
+    const now = new Date();
+    const yesterday = startOfDay(addDays(now, -1));
+    const lastWeek = startOfDay(addDays(now, -7));
+    const lastMonth = startOfDay(addDays(now, -30));
+
+    const yesterdayPayments = await Payment.count({
+      where: {
+        paymentDate: {
+          [Op.gte]: yesterday,
+          [Op.lt]: addDays(yesterday, 1),
+        },
+        paymentStatus: PaymentStatus.COMPLETED,
+      },
+    });
+
+    const lastWeekPayments = await Payment.count({
+      where: {
+        paymentDate: {
+          [Op.gte]: lastWeek,
+          [Op.lt]: addDays(lastWeek, 7),
+        },
+        paymentStatus: PaymentStatus.COMPLETED,
+      },
+    });
+
+    const lastMonthPayments = await Payment.count({
+      where: {
+        paymentDate: {
+          [Op.gte]: lastMonth,
+          [Op.lt]: addDays(lastMonth, 30),
+        },
+        paymentStatus: PaymentStatus.COMPLETED,
+      },
+    });
+
+    const todayPayments = completedPayments.filter(
+      (p) => p.paymentDate >= startOfDay(now)
+    ).length;
+
+    const thisWeekPayments = completedPayments.filter(
+      (p) => p.paymentDate >= startOfDay(addDays(now, -7))
+    ).length;
+
+    const thisMonthPayments = completedPayments.filter(
+      (p) => p.paymentDate >= startOfDay(addDays(now, -30))
+    ).length;
+
+    return {
+      totalAmount,
+      completedAmount,
+      pendingAmount,
+      failedAmount,
+      totalTransactions: payments.length,
+      completedTransactions: completedPayments.length,
+      pendingTransactions: pendingPayments.length,
+      failedTransactions: failedPayments.length,
+      averageTransactionAmount:
+        completedPayments.length > 0
+          ? completedAmount / completedPayments.length
+          : 0,
+      totalCommissions,
+      shaAmount,
+      mwuAmount,
+      dailyGrowth:
+        yesterdayPayments > 0
+          ? ((todayPayments - yesterdayPayments) / yesterdayPayments) * 100
+          : 0,
+      weeklyGrowth:
+        lastWeekPayments > 0
+          ? ((thisWeekPayments - lastWeekPayments) / lastWeekPayments) * 100
+          : 0,
+      monthlyGrowth:
+        lastMonthPayments > 0
+          ? ((thisMonthPayments - lastMonthPayments) / lastMonthPayments) * 100
+          : 0,
+    };
+  }
+
+  /**
+   * Verify payment using M-Pesa Transaction Status API
+   * This provides secure verification when user enters transaction code manually
+   */
+  public async verifyPaymentByReceiptNumber(
+    transactionReference: string,
+    mpesaReceiptNumber: string
+  ): Promise<{
+    success: boolean;
+    payment?: Payment;
+    message: string;
+  }> {
+    try {
+      // Find the payment record by transaction reference
+      const payment = await Payment.findOne({
+        where: {
+          transactionReference: transactionReference,
+          paymentStatus: PaymentStatus.PENDING,
+        },
+      });
+
+      if (!payment) {
+        return {
+          success: false,
+          message: "Payment record not found or already processed",
+        };
+      }
+
+      // Use M-Pesa Transaction Status API to verify the transaction
+      const verificationResult =
+        await MpesaService.verifyTransactionByReceiptNumber(
+          mpesaReceiptNumber,
+          payment.amount,
+          payment.mpesaPhoneNumber
+        );
+
+      if (!verificationResult.isValid) {
+        logger.warn("M-Pesa transaction verification failed:", {
+          transactionReference,
+          mpesaReceiptNumber,
+          error: verificationResult.error,
+        });
+
+        return {
+          success: false,
+          message:
+            verificationResult.error || "Transaction verification failed",
+        };
+      }
+
+      // If verification is successful, complete the payment
+      await this.completePayment(
+        payment.id,
+        mpesaReceiptNumber,
+        verificationResult.transactionDetails?.transactionId
+      );
+
+      logger.info("Payment verified and completed successfully:", {
+        paymentId: payment.id,
+        transactionReference,
+        mpesaReceiptNumber,
+      });
+
+      return {
+        success: true,
+        payment,
+        message: "Payment verified and completed successfully",
+      };
+    } catch (error: any) {
+      logger.error("Error verifying payment by receipt number:", error);
+      return {
+        success: false,
+        message: "Failed to verify payment. Please try again.",
+      };
+    }
+  }
+
+  /**
+   * Complete transaction verification (called from M-Pesa callback)
+   */
+  public async completeTransactionVerification(
+    transactionId: string,
+    transactionDetails: any
+  ): Promise<void> {
+    try {
+      // Find payment by M-Pesa receipt number
+      const payment = await Payment.findOne({
+        where: {
+          mpesaReceiptNumber: transactionId,
+          paymentStatus: PaymentStatus.PENDING,
+        },
+      });
+
+      if (!payment) {
+        logger.warn("Payment not found for transaction verification:", {
+          transactionId,
+        });
+        return;
+      }
+
+      // Verify transaction details match
+      const amountMatch =
+        Math.abs(payment.amount - transactionDetails.amount) < 0.01;
+      const phoneMatch =
+        payment.mpesaPhoneNumber === transactionDetails.phoneNumber;
+
+      if (!amountMatch || !phoneMatch) {
+        logger.error("Transaction details mismatch:", {
+          paymentId: payment.id,
+          expectedAmount: payment.amount,
+          actualAmount: transactionDetails.amount,
+          expectedPhone: payment.mpesaPhoneNumber,
+          actualPhone: transactionDetails.phoneNumber,
+        });
+        return;
+      }
+
+      // Complete the payment
+      await this.completePayment(
+        payment.id,
+        transactionId,
+        transactionDetails.transactionId
+      );
+
+      logger.info("Transaction verification completed:", {
+        paymentId: payment.id,
+        transactionId,
+      });
+    } catch (error: any) {
+      logger.error("Error completing transaction verification:", error);
+    }
   }
 
   /**

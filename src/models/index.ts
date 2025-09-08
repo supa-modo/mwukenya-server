@@ -6,6 +6,10 @@ import MemberSubscription from "./MemberSubscription";
 import Dependant from "./Dependant";
 import Payment from "./Payment";
 import PaymentCoverage from "./PaymentCoverage";
+import DailySettlement from "./DailySettlement";
+import CommissionPayout from "./CommissionPayout";
+import BankTransfer from "./BankTransfer";
+import AuditLog from "./AuditLog";
 
 // Define associations
 const setupAssociations = (): void => {
@@ -71,14 +75,8 @@ const setupAssociations = (): void => {
   });
 
   // Document associations for dependants (polymorphic)
-  Dependant.hasMany(Document, {
-    as: "documents",
-    foreignKey: "entityId",
-    scope: {
-      entityType: "dependant",
-    },
-    onDelete: "CASCADE",
-  });
+  // Note: Removed polymorphic association to avoid foreign key constraint issues
+  // Documents will be queried manually based on entityType and entityId
 
   // MemberSubscription associations
   User.hasMany(MemberSubscription, {
@@ -185,6 +183,62 @@ const setupAssociations = (): void => {
     as: "paymentCoverage",
     foreignKey: "paymentId",
   });
+
+  // DailySettlement associations
+  DailySettlement.belongsTo(User, {
+    as: "processor",
+    foreignKey: "processedBy",
+    constraints: false,
+  });
+
+  User.hasMany(DailySettlement, {
+    as: "processedSettlements",
+    foreignKey: "processedBy",
+  });
+
+  // CommissionPayout associations
+  CommissionPayout.belongsTo(DailySettlement, {
+    as: "settlement",
+    foreignKey: "settlementId",
+  });
+
+  CommissionPayout.belongsTo(User, {
+    as: "recipient",
+    foreignKey: "recipientId",
+  });
+
+  DailySettlement.hasMany(CommissionPayout, {
+    as: "commissionPayouts",
+    foreignKey: "settlementId",
+    onDelete: "CASCADE",
+  });
+
+  User.hasMany(CommissionPayout, {
+    as: "receivedCommissionPayouts",
+    foreignKey: "recipientId",
+  });
+
+  // BankTransfer associations
+  if (BankTransfer.associate) {
+    BankTransfer.associate({
+      DailySettlement,
+    });
+  }
+
+  // DailySettlement associations
+  if (DailySettlement.associate) {
+    DailySettlement.associate({
+      BankTransfer,
+      CommissionPayout,
+    });
+  }
+
+  // AuditLog associations (if any are needed in the future)
+  if (AuditLog.associate) {
+    AuditLog.associate({
+      User,
+    });
+  }
 };
 
 // Setup associations
@@ -200,6 +254,10 @@ export {
   Dependant,
   Payment,
   PaymentCoverage,
+  DailySettlement,
+  CommissionPayout,
+  BankTransfer,
+  AuditLog,
 };
 
 // Export initialization function
@@ -246,5 +304,9 @@ export default {
   Dependant,
   Payment,
   PaymentCoverage,
+  DailySettlement,
+  CommissionPayout,
+  BankTransfer,
+  AuditLog,
   initializeDatabase,
 };

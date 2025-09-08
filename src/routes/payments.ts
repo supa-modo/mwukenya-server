@@ -53,11 +53,61 @@ router.post(
   PaymentController.verifyPayment
 );
 
+// Secure payment verification using M-Pesa Transaction Status API - requires authentication
+router.post(
+  "/verify-secure",
+  authenticate,
+  paymentRateLimit,
+  PaymentController.verifyPaymentSecure
+);
+
 // M-Pesa callback endpoint - no authentication (called by M-Pesa)
 router.post(
   "/mpesa/callback",
   callbackRateLimit,
   PaymentController.handleMpesaCallback
+);
+
+// M-Pesa Transaction Status callback endpoints - no authentication (called by M-Pesa)
+router.post(
+  "/mpesa/transaction-status/result",
+  callbackRateLimit,
+  PaymentController.transactionStatusResult
+);
+
+router.post(
+  "/mpesa/transaction-status/timeout",
+  callbackRateLimit,
+  PaymentController.transactionStatusTimeout
+);
+
+// M-Pesa B2C result callback - no authentication (called by M-Pesa)
+router.post(
+  "/mpesa/b2c/result",
+  callbackRateLimit,
+  PaymentController.handleB2CResult
+);
+
+// M-Pesa B2C timeout callback - no authentication (called by M-Pesa)
+router.post(
+  "/mpesa/b2c/timeout",
+  callbackRateLimit,
+  PaymentController.handleB2CTimeout
+);
+
+// Admin endpoints - require admin access
+router.get(
+  "/admin/all",
+  authenticate,
+  requireAdmin,
+  PaymentController.getAllPayments
+);
+
+router.get(
+  "/admin/statistics",
+  authenticate,
+  requireAdmin,
+  PaymentController.getPaymentStatistics
 );
 
 // Test M-Pesa connection - admin only

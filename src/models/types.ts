@@ -197,6 +197,7 @@ export interface PaymentAttributes {
   subscriptionId: string | null;
   amount: number;
   paymentDate: Date;
+  settlementDate: Date;
   paymentMethod: string;
   transactionReference: string;
   paymentStatus: PaymentStatus;

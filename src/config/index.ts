@@ -152,8 +152,12 @@ export const config = {
       process.env.RATE_LIMIT_MAX_REQUESTS || "100",
       10
     ),
+    // Payment confirmation password for settlement processing
+    paymentConfirmationPassword:
+      process.env.PAYMENT_CONFIRMATION_PASSWORD || "mwu-Kenya002025",
   },
 
+  //TODO: Ensure to set these in production
   // External API configuration
   external: {
     mpesa: {
@@ -163,7 +167,29 @@ export const config = {
       paybillNumber: process.env.MPESA_PAYBILL_NUMBER || "174379",
       passkey: process.env.MPESA_PASSKEY || "",
       callbackUrl:
-        process.env.MPESA_CALLBACK_URL || "server.mwukenya.co.ke/api/v1/payments/mpesa/callback",
+        process.env.MPESA_CALLBACK_URL ||
+        "server.mwukenya.co.ke/api/v1/payments/mpesa/callback",
+      // Production settings
+      initiatorName: process.env.MPESA_INITIATOR_NAME || "testapi",
+      initiatorPassword: process.env.MPESA_INITIATOR_PASSWORD || "",
+      publicKey: process.env.MPESA_PUBLIC_KEY || "",
+    },
+    // Bank transfer configuration for SHA and MWU payments
+    banking: {
+      shaBank: {
+        bankName: process.env.SHA_BANK_NAME || "Kenya Commercial Bank",
+        accountNumber: process.env.SHA_ACCOUNT_NUMBER || "",
+        accountName: process.env.SHA_ACCOUNT_NAME || "Social Health Authority",
+        branchCode: process.env.SHA_BRANCH_CODE || "",
+        swiftCode: process.env.SHA_SWIFT_CODE || "",
+      },
+      mwuBank: {
+        bankName: process.env.MWU_BANK_NAME || "Equity Bank",
+        accountNumber: process.env.MWU_ACCOUNT_NUMBER || "",
+        accountName: process.env.MWU_ACCOUNT_NAME || "Medical Workers Union",
+        branchCode: process.env.MWU_BRANCH_CODE || "",
+        swiftCode: process.env.MWU_SWIFT_CODE || "",
+      },
     },
     africasTalking: {
       apiKey: process.env.AFRICAS_TALKING_API_KEY || "",

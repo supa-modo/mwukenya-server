@@ -199,6 +199,11 @@ const gracefulShutdown = async (signal: string): Promise<void> => {
   }, 30000); // 30 seconds
 
   try {
+    // Stop scheduled jobs
+    const SchedulerService = await import("./services/SchedulerService");
+    SchedulerService.default.stopAllJobs();
+    logger.info("Scheduled jobs stopped");
+
     // Close database connections
     const { closeConnection } = await import("./config/database");
     const { closeRedisConnection, RedisConnectionManager } = await import(
@@ -232,7 +237,6 @@ const initializeApp = async (): Promise<void> => {
     if (!dbConnected) {
       throw new Error("Failed to connect to database");
     }
-
     // Test Redis connection
     const redisConnected = await testRedisConnection();
     if (!redisConnected) {
@@ -245,11 +249,17 @@ const initializeApp = async (): Promise<void> => {
     await initializeDatabase();
     logger.info("Database models initialized");
 
+    // Initialize scheduled jobs
+    const SchedulerService = await import("./services/SchedulerService");
+    SchedulerService.default.initializeScheduledJobs();
+    logger.info("Scheduled jobs initialized");
+
     logger.info("Application initialized successfully");
   } catch (error) {
     logger.error("Failed to initialize application:", error);
     process.exit(1);
   }
+
 };
 
 // Start server

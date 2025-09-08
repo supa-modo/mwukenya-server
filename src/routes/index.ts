@@ -8,6 +8,7 @@ import subscriptionRoutes from "./subscriptions";
 import dependantRoutes from "./dependants";
 import contactRoutes from "./contact";
 import paymentRoutes from "./payments";
+import settlementRoutes from "./settlements";
 
 const router = Router();
 
@@ -86,6 +87,7 @@ router.use("/subscriptions", subscriptionRoutes);
 router.use("/dependants", dependantRoutes);
 router.use("/contact", contactRoutes);
 router.use("/payments", paymentRoutes);
+router.use("/settlements", settlementRoutes);
 
 // 404 handler for API routes
 router.use("*", (req, res) => {

@@ -23,6 +23,7 @@ class Payment
   public subscriptionId!: string;
   public amount!: number;
   public paymentDate!: Date;
+  public settlementDate!: Date;
   public paymentMethod!: string;
   public transactionReference!: string;
   public paymentStatus!: PaymentStatus;
@@ -254,6 +255,11 @@ Payment.init(
       allowNull: false,
       defaultValue: DataTypes.NOW,
     },
+    settlementDate: {
+      type: DataTypes.DATEONLY,
+      allowNull: false,
+      defaultValue: DataTypes.NOW,
+    },
     paymentMethod: {
       type: DataTypes.STRING(50),
       allowNull: false,
@@ -401,6 +407,10 @@ Payment.init(
       {
         fields: ["userId", "paymentDate"],
         name: "idx_payments_user_date",
+      },
+      {
+        fields: ["settlementDate", "paymentStatus"],
+        name: "idx_payments_settlement_status",
       },
       {
         fields: ["paymentStatus"],
