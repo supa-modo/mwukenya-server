@@ -11,6 +11,37 @@ import Joi from "joi";
 
 export class SettlementController {
   /**
+   * Check if all required settlement processes are completed
+   */
+  private async checkIfAllProcessesCompleted(
+    settlement: any
+  ): Promise<boolean> {
+    try {
+      // Check if SHA bank transfer is processed
+      const shaProcessed = settlement.sha_processed_at !== null;
+
+      // Check if MWU bank transfer is processed
+      const mwuProcessed = settlement.mwu_processed_at !== null;
+
+      // Check if commission payouts are processed
+      // We need to check if there are any pending commission payouts for this settlement
+      const pendingPayouts = await CommissionPayout.findAll({
+        where: {
+          settlementId: settlement.id,
+          status: "pending",
+        },
+      });
+
+      const commissionsProcessed = pendingPayouts.length === 0;
+
+      // All processes must be completed
+      return shaProcessed && mwuProcessed && commissionsProcessed;
+    } catch (error) {
+      logger.error("Error checking if all processes are completed:", error);
+      return false;
+    }
+  }
+  /**
    * Generate daily settlement for a specific date
    */
   generateDailySettlement = async (
@@ -70,6 +101,62 @@ export class SettlementController {
           error: {
             code: "SETTLEMENT_003",
             message: "Failed to generate daily settlement",
+          },
+        });
+      }
+    }
+  };
+
+  /**
+   * Check if a settlement exists for a specific date
+   */
+  checkSettlementExists = async (
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> => {
+    try {
+      const { date } = req.query;
+
+      if (!date) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: "SETTLEMENT_004",
+            message: "Date parameter is required",
+          },
+        });
+        return;
+      }
+
+      const settlementDate = parseISO(date as string);
+      const result = await SettlementService.checkSettlementExists(
+        settlementDate
+      );
+
+      res.status(200).json({
+        success: true,
+        data: result,
+        message: result.exists
+          ? "Settlement already exists for this date"
+          : "No settlement found for this date",
+      });
+    } catch (error) {
+      console.error("Error checking settlement existence:", error);
+
+      if (error instanceof ApiError) {
+        res.status(error.statusCode).json({
+          success: false,
+          error: {
+            code: error.code,
+            message: error.message,
+          },
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: {
+            code: "SETTLEMENT_005",
+            message: "Failed to check settlement existence",
           },
         });
       }
@@ -1056,10 +1143,10 @@ export class SettlementController {
    */
   listReports = async (req: Request, res: Response): Promise<void> => {
     try {
-      const { default: ReportGenerationService } = await import(
+      const { default: reportGenerationService } = await import(
         "../services/ReportGenerationService"
       );
-      const reports = ReportGenerationService.listReports();
+      const reports = reportGenerationService.listReports();
 
       res.status(200).json({
         success: true,
@@ -1097,10 +1184,10 @@ export class SettlementController {
         return;
       }
 
-      const { default: ReportGenerationService } = await import(
+      const { default: reportGenerationService } = await import(
         "../services/ReportGenerationService"
       );
-      const reports = ReportGenerationService.listReports();
+      const reports = reportGenerationService.listReports();
       const report = reports.find((r) => r.fileName === fileName);
 
       if (!report) {
@@ -1112,6 +1199,17 @@ export class SettlementController {
           },
         });
         return;
+      }
+
+      // Set appropriate content type for Excel files
+      const fileExtension = fileName.split(".").pop()?.toLowerCase();
+      if (fileExtension === "xlsx") {
+        res.setHeader(
+          "Content-Type",
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        );
+      } else if (fileExtension === "xls") {
+        res.setHeader("Content-Type", "application/vnd.ms-excel");
       }
 
       res.download(report.filePath, report.fileName, (err) => {
@@ -1136,6 +1234,172 @@ export class SettlementController {
         error: {
           code: "SETTLEMENT_051",
           message: "Failed to download report",
+        },
+      });
+    }
+  };
+
+  /**
+   * Process manual bank transfer (SHA or MWU)
+   */
+  processManualBankTransfer = async (
+    req: Request,
+    res: Response
+  ): Promise<void> => {
+    try {
+      const { settlementId } = req.params;
+      const { transferType, password, amount, transactionDetails } = req.body;
+
+      if (
+        !settlementId ||
+        !transferType ||
+        !password ||
+        !amount ||
+        !transactionDetails
+      ) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: "SETTLEMENT_052",
+            message: "Missing required parameters",
+          },
+        });
+        return;
+      }
+
+      // Validate password
+      if (password !== process.env.PAYMENT_CONFIRMATION_PASSWORD) {
+        res.status(401).json({
+          success: false,
+          error: {
+            code: "SETTLEMENT_053",
+            message: "Invalid password",
+          },
+        });
+        return;
+      }
+
+      // Get settlement
+      const settlement = await DailySettlement.findByPk(settlementId);
+      if (!settlement) {
+        res.status(404).json({
+          success: false,
+          error: {
+            code: "SETTLEMENT_054",
+            message: "Settlement not found",
+          },
+        });
+        return;
+      }
+
+      // Validate transfer type
+      if (!["sha", "mwu"].includes(transferType)) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: "SETTLEMENT_055",
+            message: "Invalid transfer type",
+          },
+        });
+        return;
+      }
+
+      // Validate amount
+      const expectedAmount =
+        transferType === "sha" ? settlement.shaAmount : settlement.mwuAmount;
+      const providedAmount = parseFloat(amount);
+      const expectedAmountFloat = Number(expectedAmount);
+
+      // Use a small tolerance for floating point comparison
+      const tolerance = 0.01;
+      if (Math.abs(providedAmount - expectedAmountFloat) > tolerance) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: "SETTLEMENT_056",
+            message: `Amount mismatch. Expected ${expectedAmountFloat.toFixed(
+              2
+            )}, got ${providedAmount.toFixed(2)}`,
+          },
+        });
+        return;
+      }
+
+      // Generate payment report
+      const { default: paymentReportService } = await import(
+        "../services/PaymentReportService"
+      );
+      let reportFilename: string;
+
+      if (transferType === "sha") {
+        reportFilename =
+          await paymentReportService.generateShaBankTransferReport(
+            settlementId,
+            transactionDetails
+          );
+      } else {
+        reportFilename =
+          await paymentReportService.generateMwuBankTransferReport(
+            settlementId,
+            transactionDetails
+          );
+      }
+
+      // Update settlement status
+      const updateField =
+        transferType === "sha" ? "sha_processed_at" : "mwu_processed_at";
+
+      // Only update the specific field, don't change overall status yet
+      await settlement.update({
+        [updateField]: new Date(),
+      });
+
+      // Check if all required processes are completed
+      const updatedSettlement = await DailySettlement.findByPk(settlementId);
+      if (updatedSettlement) {
+        const isAllCompleted = await this.checkIfAllProcessesCompleted(
+          updatedSettlement
+        );
+
+        // Only mark as completed if all processes are done
+        if (isAllCompleted) {
+          await updatedSettlement.update({
+            status: "completed",
+          });
+        }
+      }
+
+      // Log the transaction
+      logger.info(
+        `Manual ${transferType.toUpperCase()} bank transfer processed`,
+        {
+          settlementId,
+          amount,
+          transactionCode: transactionDetails.transactionCode,
+          reportFilename,
+          processedBy: req.user?.id,
+        }
+      );
+
+      res.json({
+        success: true,
+        message: `${transferType.toUpperCase()} bank transfer marked as complete`,
+        data: {
+          settlementId,
+          transferType,
+          amount,
+          transactionCode: transactionDetails.transactionCode,
+          reportFilename,
+          processedAt: new Date(),
+        },
+      });
+    } catch (error) {
+      logger.error("Error processing manual bank transfer:", error);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: "SETTLEMENT_057",
+          message: "Failed to process manual bank transfer",
         },
       });
     }
@@ -1287,6 +1551,21 @@ export class SettlementController {
         settlementId,
         userId
       );
+
+      // Check if all required processes are completed after commission processing
+      const settlement = await DailySettlement.findByPk(settlementId);
+      if (settlement) {
+        const isAllCompleted = await this.checkIfAllProcessesCompleted(
+          settlement
+        );
+
+        // Only mark as completed if all processes are done
+        if (isAllCompleted) {
+          await settlement.update({
+            status: "completed",
+          });
+        }
+      }
 
       res.status(200).json({
         success: true,

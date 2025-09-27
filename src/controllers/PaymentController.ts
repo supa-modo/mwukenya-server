@@ -4,6 +4,7 @@ import { ApiError } from "../utils/apiError";
 import logger from "../utils/logger";
 import PaymentService from "../services/PaymentService";
 import MpesaService from "../services/MpesaService";
+import MembershipService from "../services/MembershipService";
 import Payment from "../models/Payment";
 import { PaymentStatus } from "../models/types";
 
@@ -852,6 +853,315 @@ export class PaymentController {
         success: true,
         message: "B2C timeout received",
       });
+    }
+  }
+
+  // ============ MEMBERSHIP PAYMENT ENDPOINTS ============
+
+  /**
+   * Check membership fee status
+   */
+  public static async checkMembershipStatus(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        throw new ApiError("User not authenticated", "UNAUTHORIZED", 401);
+      }
+
+      const membershipDetails = await MembershipService.getMembershipFeeDetails(
+        userId
+      );
+
+      res.status(200).json({
+        success: true,
+        data: membershipDetails,
+        message: "Membership status retrieved successfully",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      logger.error("Error checking membership status:", error);
+
+      if (error instanceof ApiError) {
+        res.status(error.statusCode).json({
+          success: false,
+          error: {
+            code: error.code,
+            message: error.message,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: {
+            code: "MEMBERSHIP_STATUS_ERROR",
+            message: "Failed to check membership status",
+          },
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
+  }
+
+  /**
+   * Initiate membership fee payment
+   */
+  public static async initiateMembershipPayment(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      // Validate request body
+      const schema = Joi.object({
+        phoneNumber: Joi.string()
+          .pattern(/^(\+?254|0)?[17]\d{8}$/)
+          .required(),
+        paymentMethod: Joi.string().valid("mpesa").default("mpesa"),
+        description: Joi.string().max(255).optional(),
+      });
+
+      const { error, value } = schema.validate(req.body);
+      if (error) {
+        throw new ApiError(error.details[0].message, "VALIDATION_ERROR", 400);
+      }
+
+      const userId = req.user?.id;
+      if (!userId) {
+        throw new ApiError("User not authenticated", "UNAUTHORIZED", 401);
+      }
+
+      const membershipPaymentRequest = {
+        userId,
+        amount: 500, // Fixed membership fee amount
+        ...value,
+      };
+
+      const result = await MembershipService.initiateMembershipPayment(
+        membershipPaymentRequest
+      );
+
+      res.status(201).json({
+        success: true,
+        data: result,
+        message: "Membership payment initiated successfully",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      logger.error("Error initiating membership payment:", error);
+
+      if (error instanceof ApiError) {
+        res.status(error.statusCode).json({
+          success: false,
+          error: {
+            code: error.code,
+            message: error.message,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: {
+            code: "MEMBERSHIP_PAYMENT_INITIATION_ERROR",
+            message: "Failed to initiate membership payment",
+          },
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
+  }
+
+  /**
+   * Get membership payment status
+   */
+  public static async getMembershipPaymentStatus(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      const { paymentId } = req.params;
+
+      if (!paymentId) {
+        throw new ApiError("Payment ID is required", "MISSING_PAYMENT_ID", 400);
+      }
+
+      const userId = req.user?.id;
+      if (!userId) {
+        throw new ApiError("User not authenticated", "UNAUTHORIZED", 401);
+      }
+
+      const result = await MembershipService.getMembershipPaymentStatus(
+        paymentId
+      );
+
+      // Ensure user can only access their own payments
+      if (
+        result.payment.userId !== userId &&
+        req.user?.role !== "admin" &&
+        req.user?.role !== "superadmin"
+      ) {
+        throw new ApiError("Access denied", "FORBIDDEN", 403);
+      }
+
+      res.status(200).json({
+        success: true,
+        data: result,
+        message: "Membership payment status retrieved successfully",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      logger.error("Error getting membership payment status:", error);
+
+      if (error instanceof ApiError) {
+        res.status(error.statusCode).json({
+          success: false,
+          error: {
+            code: error.code,
+            message: error.message,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: {
+            code: "MEMBERSHIP_PAYMENT_STATUS_ERROR",
+            message: "Failed to get membership payment status",
+          },
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
+  }
+
+  /**
+   * Get user's membership payment history
+   */
+  public static async getMembershipPaymentHistory(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        throw new ApiError("User not authenticated", "UNAUTHORIZED", 401);
+      }
+
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 20;
+
+      if (page < 1 || limit < 1 || limit > 100) {
+        throw new ApiError(
+          "Invalid pagination parameters",
+          "INVALID_PAGINATION",
+          400
+        );
+      }
+
+      const result = await MembershipService.getUserMembershipPayments(
+        userId,
+        page,
+        limit
+      );
+
+      res.status(200).json({
+        success: true,
+        data: result.payments,
+        pagination: result.pagination,
+        message: "Membership payment history retrieved successfully",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      logger.error("Error getting membership payment history:", error);
+
+      if (error instanceof ApiError) {
+        res.status(error.statusCode).json({
+          success: false,
+          error: {
+            code: error.code,
+            message: error.message,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: {
+            code: "MEMBERSHIP_PAYMENT_HISTORY_ERROR",
+            message: "Failed to get membership payment history",
+          },
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
+  }
+
+  /**
+   * Get all membership payments (Admin only)
+   */
+  public static async getAllMembershipPayments(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      // Check admin access
+      if (req.user?.role !== "admin" && req.user?.role !== "superadmin") {
+        throw new ApiError("Access denied", "FORBIDDEN", 403);
+      }
+
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 20;
+      const status = req.query.status as string;
+      const search = req.query.search as string;
+
+      if (page < 1 || limit < 1 || limit > 100) {
+        throw new ApiError(
+          "Invalid pagination parameters",
+          "INVALID_PAGINATION",
+          400
+        );
+      }
+
+      const result = await MembershipService.getAllMembershipPayments(
+        page,
+        limit,
+        status,
+        search
+      );
+
+      res.status(200).json({
+        success: true,
+        data: result.payments,
+        pagination: result.pagination,
+        statistics: result.statistics,
+        message: "Membership payments retrieved successfully",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      logger.error("Error getting all membership payments:", error);
+
+      if (error instanceof ApiError) {
+        res.status(error.statusCode).json({
+          success: false,
+          error: {
+            code: error.code,
+            message: error.message,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: {
+            code: "ADMIN_MEMBERSHIP_PAYMENTS_ERROR",
+            message: "Failed to get membership payments",
+          },
+          timestamp: new Date().toISOString(),
+        });
+      }
     }
   }
 }

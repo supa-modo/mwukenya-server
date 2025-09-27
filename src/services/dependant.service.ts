@@ -97,7 +97,6 @@ export class DependantService {
           {
             model: Document,
             as: "documents",
-            where: { entityType: "dependant" },
             required: false,
           },
         ];
@@ -105,11 +104,43 @@ export class DependantService {
 
       const dependants = await Dependant.findAll(options);
 
+      // If documents weren't included via association, fetch them manually
+      let dependantsWithDocs = dependants;
+      if (includeDocuments && dependants.length > 0) {
+        // Get all dependant IDs
+        const dependantIds = dependants.map((d) => d.id);
+
+        // Fetch documents for all dependants
+        const documents = await Document.findAll({
+          where: {
+            entityType: "dependant",
+            entityId: dependantIds,
+          },
+          order: [["uploadedAt", "DESC"]],
+        });
+
+        // Group documents by dependant ID
+        const docsByDependantId = documents.reduce((acc, doc) => {
+          if (!acc[doc.entityId]) {
+            acc[doc.entityId] = [];
+          }
+          acc[doc.entityId].push(doc);
+          return acc;
+        }, {} as Record<string, any[]>);
+
+        // Attach documents to dependants
+        dependantsWithDocs = dependants.map((dependant) => {
+          const dependantData = dependant.toJSON() as any;
+          dependantData.documents = docsByDependantId[dependant.id] || [];
+          return dependantData;
+        });
+      }
+
       return {
         success: true,
-        data: dependants.map(
-          (d: Dependant) => d.toJSON() as DependantAttributes
-        ),
+        data: includeDocuments
+          ? dependantsWithDocs
+          : dependants.map((d: Dependant) => d.toJSON() as DependantAttributes),
       };
     } catch (error) {
       logger.error("Error fetching user dependants:", error);
@@ -130,18 +161,29 @@ export class DependantService {
    */
   static async getDependantById(
     dependantId: string,
-    userId: string
+    userId: string,
+    includeDocuments: boolean = false
   ): Promise<ServiceResponse<DependantAttributes>> {
     try {
+      const includeOptions: any[] = [
+        {
+          model: User,
+          as: "user",
+          attributes: ["id", "firstName", "lastName", "phoneNumber"],
+        },
+      ];
+
+      if (includeDocuments) {
+        includeOptions.push({
+          model: Document,
+          as: "documents",
+          required: false,
+        });
+      }
+
       const dependant = await Dependant.findOne({
         where: { id: dependantId, userId },
-        include: [
-          {
-            model: User,
-            as: "user",
-            attributes: ["id", "firstName", "lastName", "phoneNumber"],
-          },
-        ],
+        include: includeOptions,
       });
 
       if (!dependant) {
@@ -156,7 +198,21 @@ export class DependantService {
       }
 
       // Convert to plain object and ensure all required fields are present
-      const dependantData = dependant.toJSON() as DependantAttributes;
+      let dependantData = dependant.toJSON() as any;
+
+      // If documents weren't included via association, fetch them manually
+      if (includeDocuments) {
+        if (!dependantData.documents || dependantData.documents.length === 0) {
+          const documents = await Document.findAll({
+            where: {
+              entityType: "dependant",
+              entityId: dependantId,
+            },
+            order: [["uploadedAt", "DESC"]],
+          });
+          dependantData.documents = documents.map((doc) => doc.toJSON());
+        }
+      }
 
       return {
         success: true,
@@ -381,6 +437,65 @@ export class DependantService {
         error: {
           code: "FETCH_DEPENDANT_STATS_FAILED",
           message: "Failed to fetch dependant statistics",
+          statusCode: 500,
+          details: error,
+        },
+      };
+    }
+  }
+
+  /**
+   * Get documents for a specific dependant
+   */
+  static async getDependantDocuments(
+    dependantId: string,
+    userId: string
+  ): Promise<ServiceResponse<any[]>> {
+    try {
+      // First verify that the dependant belongs to the user
+      const dependant = await Dependant.findOne({
+        where: { id: dependantId, userId },
+      });
+
+      if (!dependant) {
+        return {
+          success: false,
+          error: {
+            code: "DEPENDANT_NOT_FOUND",
+            message: "Dependant not found",
+            statusCode: 404,
+          },
+        };
+      }
+
+      // Get documents for this dependant
+      const documents = await Document.findAll({
+        where: {
+          entityType: "dependant",
+          entityId: dependantId,
+        },
+        include: [
+          {
+            model: User,
+            as: "verifier",
+            attributes: ["id", "firstName", "lastName"],
+            required: false,
+          },
+        ],
+        order: [["uploadedAt", "DESC"]],
+      });
+
+      return {
+        success: true,
+        data: documents.map((doc) => doc.toJSON()),
+      };
+    } catch (error) {
+      logger.error("Error fetching dependant documents:", error);
+      return {
+        success: false,
+        error: {
+          code: "FETCH_DEPENDANT_DOCUMENTS_FAILED",
+          message: "Failed to fetch dependant documents",
           statusCode: 500,
           details: error,
         },

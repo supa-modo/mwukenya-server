@@ -75,8 +75,21 @@ const setupAssociations = (): void => {
   });
 
   // Document associations for dependants (polymorphic)
-  // Note: Removed polymorphic association to avoid foreign key constraint issues
-  // Documents will be queried manually based on entityType and entityId
+  // Add association from Dependant to Documents
+  Dependant.hasMany(Document, {
+    as: "documents",
+    foreignKey: "entityId",
+    constraints: false,
+    scope: {
+      entityType: "dependant",
+    },
+  });
+
+  Document.belongsTo(Dependant, {
+    as: "dependant",
+    foreignKey: "entityId",
+    constraints: false,
+  });
 
   // MemberSubscription associations
   User.hasMany(MemberSubscription, {

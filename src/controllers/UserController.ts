@@ -881,6 +881,7 @@ export class UserController {
         isEmailVerified: false,
         isPhoneVerified: false,
         isIdNumberVerified: false,
+        hasPaidMembershipFee: true, // Delegate roles don't need to pay membership fee
       });
 
       // Return delegate data (excluding sensitive fields)

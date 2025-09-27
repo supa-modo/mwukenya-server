@@ -65,9 +65,9 @@ export class SettlementService {
           `Settlement for ${format(
             settlementDate,
             "yyyy-MM-dd"
-          )} already exists`,
+          )} already exists. Settlement ID: ${existingSettlement.id}`,
           "SETTLEMENT_EXISTS",
-          400
+          409 // Changed to 409 Conflict status code
         );
       }
 
@@ -178,8 +178,40 @@ export class SettlementService {
 
       return settlement;
     } catch (error: any) {
-      await transaction.rollback();
+      // Only rollback if transaction is still active
+      try {
+        await transaction.rollback();
+      } catch (rollbackError) {
+        // Transaction might already be rolled back, ignore the error
+        logger.warn(
+          "Transaction rollback failed (likely already rolled back):",
+          rollbackError
+        );
+      }
       logger.error("Error generating daily settlement:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if a settlement exists for a specific date
+   */
+  public async checkSettlementExists(date: Date): Promise<{
+    exists: boolean;
+    settlement?: DailySettlement;
+  }> {
+    try {
+      const settlementDate = startOfDay(date);
+      const existingSettlement = await DailySettlement.getSettlementByDate(
+        settlementDate
+      );
+
+      return {
+        exists: !!existingSettlement,
+        settlement: existingSettlement || undefined,
+      };
+    } catch (error: any) {
+      logger.error("Error checking settlement existence:", error);
       throw error;
     }
   }

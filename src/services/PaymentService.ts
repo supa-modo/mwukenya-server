@@ -6,6 +6,7 @@ import {
   PaymentStatus,
   PaymentCreationAttributes,
   SubscriptionStatus,
+  PaymentType,
 } from "../models/types";
 import { ApiError } from "../utils/apiError";
 import logger from "../utils/logger";
@@ -171,6 +172,7 @@ export class PaymentService {
         paymentMethod: request.paymentMethod,
         transactionReference,
         paymentStatus: PaymentStatus.PENDING,
+        paymentType: PaymentType.PREMIUM, // Set payment type for premium payments
         daysCovered: coverageDates.daysCovered,
         coverageStartDate: coverageDates.startDate,
         coverageEndDate: coverageDates.endDate,
@@ -284,6 +286,7 @@ export class PaymentService {
   /**
    * Complete a payment (called from callback or manual verification)
    * Creates subscription if this is a new user's first payment
+   * Handles both premium and membership payments
    */
   public async completePayment(
     paymentId: string,
@@ -301,6 +304,23 @@ export class PaymentService {
       if (payment.paymentStatus === PaymentStatus.COMPLETED) {
         logger.warn("Payment already completed:", paymentId);
         await transaction.rollback();
+        return;
+      }
+
+      // Handle membership payments differently
+      if (payment.paymentType === PaymentType.MEMBERSHIP) {
+        // Import MembershipService dynamically to avoid circular dependency
+        const { default: MembershipService } = await import(
+          "./MembershipService"
+        );
+
+        // Use MembershipService to complete the membership payment
+        await transaction.rollback(); // Rollback this transaction
+        await MembershipService.completeMembershipPayment(
+          paymentId,
+          mpesaReceiptNumber,
+          mpesaTransactionId
+        );
         return;
       }
 

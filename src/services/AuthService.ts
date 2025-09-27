@@ -578,6 +578,7 @@ export class AuthService {
         isEmailVerified: false,
         isPhoneVerified: false,
         isIdNumberVerified: false,
+        hasPaidMembershipFee: userData.role !== UserRole.MEMBER, // Only members need to pay membership fee
       });
 
       auditLogger("USER_REGISTRATION", user.id, {

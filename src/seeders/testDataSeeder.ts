@@ -33,6 +33,7 @@ export async function seedTestData(transaction?: Transaction) {
         isIdNumberVerified: true,
         coordinatorCode: "TESTCOORD001",
         membershipDate: new Date(),
+        hasPaidMembershipFee: true, // Coordinator roles don't need to pay membership fee
       },
       { transaction: t }
     );
@@ -63,6 +64,7 @@ export async function seedTestData(transaction?: Transaction) {
         coordinatorId: testCoordinator.id,
         delegateCode: "TESTDEL001",
         membershipDate: new Date(),
+        hasPaidMembershipFee: true, // Delegate roles don't need to pay membership fee
       },
       { transaction: t }
     );
@@ -132,6 +134,8 @@ export async function seedTestData(transaction?: Transaction) {
     ];
 
     for (let i = 0; i < 25; i++) {
+      // Some members have paid membership fee, others haven't (for testing)
+      const hasPaid = i % 3 !== 0; // About 2/3 have paid, 1/3 haven't
       const member = {
         firstName: firstNames[i],
         lastName: lastNames[i],
@@ -155,6 +159,13 @@ export async function seedTestData(transaction?: Transaction) {
         membershipDate: new Date(
           Date.now() - Math.random() * 365 * 24 * 60 * 60 * 1000
         ), // Random date within last year
+        hasPaidMembershipFee: hasPaid,
+        ...(hasPaid && {
+          membershipFeeAmount: 500,
+          membershipFeePaidAt: new Date(
+            Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000
+          ), // Paid within last 30 days
+        }),
       };
       memberData.push(member);
     }
@@ -187,6 +198,7 @@ export async function seedTestData(transaction?: Transaction) {
           delegateId: testDelegate.id,
           coordinatorId: testCoordinator.id,
           membershipNumber: "TESTPEND001",
+          hasPaidMembershipFee: false, // Pending members haven't paid
         },
         {
           firstName: "Pending",
@@ -208,6 +220,7 @@ export async function seedTestData(transaction?: Transaction) {
           delegateId: testDelegate.id,
           coordinatorId: testCoordinator.id,
           membershipNumber: "TESTPEND002",
+          hasPaidMembershipFee: false, // Pending members haven't paid
         },
       ],
       { transaction: t }
@@ -239,6 +252,7 @@ export async function seedTestData(transaction?: Transaction) {
           coordinatorId: testCoordinator.id,
           membershipNumber: "TESTINACT001",
           membershipDate: new Date(Date.now() - 2 * 365 * 24 * 60 * 60 * 1000), // 2 years ago
+          hasPaidMembershipFee: false, // Inactive members may not have paid
         },
         {
           firstName: "Inactive",
@@ -261,6 +275,7 @@ export async function seedTestData(transaction?: Transaction) {
           coordinatorId: testCoordinator.id,
           membershipNumber: "TESTINACT002",
           membershipDate: new Date(Date.now() - 2 * 365 * 24 * 60 * 60 * 1000), // 2 years ago
+          hasPaidMembershipFee: false, // Inactive members may not have paid
         },
       ],
       { transaction: t }

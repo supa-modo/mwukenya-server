@@ -78,6 +78,16 @@ router.post(
   SettlementController.autoGenerateSettlements
 );
 
+router.get(
+  "/check-exists",
+  authenticate,
+  authorize([UserRole.ADMIN, UserRole.SUPERADMIN]),
+  validateRequest({
+    query: [{ field: "date", required: true, type: "date" }],
+  }),
+  SettlementController.checkSettlementExists
+);
+
 router.post(
   "/:settlementId/process",
   authenticate,
@@ -99,14 +109,6 @@ router.get(
   authorize([UserRole.ADMIN, UserRole.SUPERADMIN, UserRole.COORDINATOR]),
   dateRangeValidation,
   SettlementController.getSettlementSummary
-);
-
-router.get(
-  "/:settlementId",
-  authenticate,
-  authorize([UserRole.ADMIN, UserRole.SUPERADMIN, UserRole.COORDINATOR]),
-  processSettlementValidation,
-  SettlementController.getSettlementById
 );
 
 router.get(
@@ -224,6 +226,38 @@ router.post(
 );
 
 router.post(
+  "/:settlementId/process-manual-transfer",
+  authenticate,
+  authorize([UserRole.ADMIN, UserRole.SUPERADMIN]),
+  validateRequest({
+    params: [commonValidations.uuid("settlementId")],
+    body: [
+      {
+        field: "transferType",
+        required: true,
+        type: "string",
+        minLength: 1,
+        maxLength: 10,
+      },
+      {
+        field: "password",
+        required: true,
+        type: "string",
+        minLength: 1,
+        maxLength: 100,
+      },
+      {
+        field: "amount",
+        required: true,
+        type: "number",
+        min: 0,
+      },
+    ],
+  }),
+  SettlementController.processManualBankTransfer
+);
+
+router.post(
   "/:settlementId/process-sha",
   authenticate,
   authorize([UserRole.ADMIN, UserRole.SUPERADMIN]),
@@ -273,13 +307,29 @@ router.post(
   SettlementController.processMwuTransfer
 );
 
-// Report generation routes
+// Report generation routes - specific routes first to avoid conflicts
 router.get(
-  "/:settlementId/report/daily",
+  "/reports",
   authenticate,
   authorize([UserRole.ADMIN, UserRole.SUPERADMIN, UserRole.COORDINATOR]),
-  processSettlementValidation,
-  SettlementController.generateDailyReport
+  SettlementController.listReports
+);
+
+router.get(
+  "/reports/download/:fileName",
+  authenticate,
+  authorize([UserRole.ADMIN, UserRole.SUPERADMIN, UserRole.COORDINATOR]),
+  validateRequest({
+    params: [
+      {
+        field: "fileName",
+        required: true,
+        type: "string",
+        pattern: /^[\w\-. ]+\.xlsx$/,
+      },
+    ],
+  }),
+  SettlementController.downloadReport
 );
 
 router.get(
@@ -318,27 +368,11 @@ router.get(
 );
 
 router.get(
-  "/reports",
+  "/:settlementId/report/daily",
   authenticate,
   authorize([UserRole.ADMIN, UserRole.SUPERADMIN, UserRole.COORDINATOR]),
-  SettlementController.listReports
-);
-
-router.get(
-  "/reports/download/:fileName",
-  authenticate,
-  authorize([UserRole.ADMIN, UserRole.SUPERADMIN, UserRole.COORDINATOR]),
-  validateRequest({
-    params: [
-      {
-        field: "fileName",
-        required: true,
-        type: "string",
-        pattern: /^[\w\-. ]+\.xlsx$/,
-      },
-    ],
-  }),
-  SettlementController.downloadReport
+  processSettlementValidation,
+  SettlementController.generateDailyReport
 );
 
 // User-specific routes (delegates and coordinators can view their own commissions)
@@ -368,6 +402,15 @@ router.get(
   ]),
   dateRangeValidation,
   SettlementController.getMyCommissionSummary
+);
+
+// Generic settlement ID route - must be last to avoid conflicts with specific routes
+router.get(
+  "/:settlementId",
+  authenticate,
+  authorize([UserRole.ADMIN, UserRole.SUPERADMIN, UserRole.COORDINATOR]),
+  processSettlementValidation,
+  SettlementController.getSettlementById
 );
 
 export default router;

@@ -37,6 +37,11 @@ export enum PaymentStatus {
   REFUNDED = "refunded",
 }
 
+export enum PaymentType {
+  PREMIUM = "premium",
+  MEMBERSHIP = "membership",
+}
+
 export enum SubscriptionStatus {
   ACTIVE = "active",
   SUSPENDED = "suspended",
@@ -133,6 +138,11 @@ export interface UserAttributes {
   refreshToken?: string;
   passwordResetToken?: string;
   passwordResetExpires?: Date;
+  // Union membership fee fields
+  hasPaidMembershipFee: boolean;
+  membershipFeeAmount?: number;
+  membershipFeePaidAt?: Date;
+  membershipFeePaymentId?: string;
   createdAt: Date;
   updatedAt: Date;
   // Association properties
@@ -201,6 +211,7 @@ export interface PaymentAttributes {
   paymentMethod: string;
   transactionReference: string;
   paymentStatus: PaymentStatus;
+  paymentType: PaymentType;
   daysCovered: number;
   coverageStartDate: Date;
   coverageEndDate: Date;

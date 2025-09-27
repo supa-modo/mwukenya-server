@@ -118,4 +118,44 @@ router.get(
   PaymentController.testMpesaConnection
 );
 
+// ============ MEMBERSHIP PAYMENT ROUTES ============
+
+// Check membership fee status
+router.get(
+  "/membership/status",
+  authenticate,
+  PaymentController.checkMembershipStatus
+);
+
+// Initiate membership fee payment
+router.post(
+  "/membership/initiate",
+  authenticate,
+  paymentRateLimit,
+  PaymentController.initiateMembershipPayment
+);
+
+// Get membership payment status
+router.get(
+  "/membership/:paymentId/status",
+  authenticate,
+  statusRateLimit,
+  PaymentController.getMembershipPaymentStatus
+);
+
+// Get user's membership payment history
+router.get(
+  "/membership/history",
+  authenticate,
+  PaymentController.getMembershipPaymentHistory
+);
+
+// Admin: Get all membership payments
+router.get(
+  "/membership/admin/all",
+  authenticate,
+  requireAdmin,
+  PaymentController.getAllMembershipPayments
+);
+
 export default router;

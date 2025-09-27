@@ -12,6 +12,10 @@ router.post("/", DependantController.createDependant);
 router.get("/", DependantController.getUserDependants);
 router.get("/stats", DependantController.getDependantStats);
 router.get("/:dependantId", DependantController.getDependantById);
+router.get(
+  "/:dependantId/documents",
+  DependantController.getDependantDocuments
+);
 router.put("/:dependantId", DependantController.updateDependant);
 router.delete("/:dependantId", DependantController.deleteDependant);
 

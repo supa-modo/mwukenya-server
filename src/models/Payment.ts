@@ -12,6 +12,7 @@ import {
   PaymentAttributes,
   PaymentCreationAttributes,
   PaymentStatus,
+  PaymentType,
 } from "./types";
 
 class Payment
@@ -27,6 +28,7 @@ class Payment
   public paymentMethod!: string;
   public transactionReference!: string;
   public paymentStatus!: PaymentStatus;
+  public paymentType!: PaymentType;
   public daysCovered!: number;
   public coverageStartDate!: Date;
   public coverageEndDate!: Date;
@@ -275,13 +277,34 @@ Payment.init(
       allowNull: false,
       defaultValue: PaymentStatus.PENDING,
     },
+    paymentType: {
+      type: DataTypes.ENUM(...Object.values(PaymentType)),
+      allowNull: false,
+      defaultValue: PaymentType.PREMIUM,
+    },
     daysCovered: {
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 1,
       validate: {
-        min: 1,
-        max: 365,
+        validateDaysCovered(value: number) {
+          // Only validate for premium payments, not membership payments
+          if (this.paymentType === PaymentType.MEMBERSHIP) {
+            return; // Skip validation for membership payments
+          }
+
+          if (value < 1) {
+            throw new Error(
+              "Days covered must be at least 1 for premium payments"
+            );
+          }
+
+          if (value > 365) {
+            throw new Error(
+              "Days covered cannot exceed 365 for premium payments"
+            );
+          }
+        },
       },
     },
     coverageStartDate: {

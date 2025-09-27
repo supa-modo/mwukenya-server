@@ -520,6 +520,7 @@ export class AdminController {
         isEmailVerified: true, // Admin-created users are verified
         isPhoneVerified: true,
         isIdNumberVerified: true,
+        hasPaidMembershipFee: role !== "member", // Non-member roles don't need to pay membership fee
       });
 
       // Return created user (excluding sensitive fields)

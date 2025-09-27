@@ -43,6 +43,11 @@ class User
   public refreshToken?: string;
   public passwordResetToken?: string;
   public passwordResetExpires?: Date;
+  // Union membership fee fields
+  public hasPaidMembershipFee!: boolean;
+  public membershipFeeAmount?: number;
+  public membershipFeePaidAt?: Date;
+  public membershipFeePaymentId?: string;
   public createdAt!: Date;
   public updatedAt!: Date;
 
@@ -439,6 +444,32 @@ User.init(
       type: DataTypes.DATE,
       allowNull: true,
       field: "password_reset_expires",
+    },
+    // Union membership fee fields
+    hasPaidMembershipFee: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      field: "has_paid_membership_fee",
+    },
+    membershipFeeAmount: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      field: "membership_fee_amount",
+    },
+    membershipFeePaidAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: "membership_fee_paid_at",
+    },
+    membershipFeePaymentId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: "membership_fee_payment_id",
+      references: {
+        model: "payments",
+        key: "id",
+      },
     },
     createdAt: {
       type: DataTypes.DATE,

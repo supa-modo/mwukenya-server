@@ -38,6 +38,7 @@ export async function seedUsers(transaction?: Transaction) {
         isPhoneVerified: true,
         isIdNumberVerified: true,
         membershipDate: new Date(),
+        hasPaidMembershipFee: true, // Admin roles don't need to pay membership fee
       },
       { transaction: t }
     );
@@ -64,6 +65,7 @@ export async function seedUsers(transaction?: Transaction) {
         isPhoneVerified: true,
         isIdNumberVerified: true,
         membershipDate: new Date(),
+        hasPaidMembershipFee: true, // Admin roles don't need to pay membership fee
       },
       { transaction: t }
     );
@@ -90,6 +92,7 @@ export async function seedUsers(transaction?: Transaction) {
           isIdNumberVerified: true,
           coordinatorCode: "COORD001",
           membershipDate: new Date(),
+          hasPaidMembershipFee: true, // Coordinator roles don't need to pay membership fee
         },
         {
           firstName: "Jane",
@@ -108,6 +111,7 @@ export async function seedUsers(transaction?: Transaction) {
           isIdNumberVerified: true,
           coordinatorCode: "COORD002",
           membershipDate: new Date(),
+          hasPaidMembershipFee: true, // Coordinator roles don't need to pay membership fee
         },
       ],
       { transaction: t }
@@ -138,6 +142,7 @@ export async function seedUsers(transaction?: Transaction) {
           coordinatorId: coordinators[0].id,
           delegateCode: "DEL001",
           membershipDate: new Date(),
+          hasPaidMembershipFee: true, // Delegate roles don't need to pay membership fee
         },
         {
           firstName: "Mary",
@@ -159,6 +164,7 @@ export async function seedUsers(transaction?: Transaction) {
           coordinatorId: coordinators[0].id,
           delegateCode: "DEL002",
           membershipDate: new Date(),
+          hasPaidMembershipFee: true, // Delegate roles don't need to pay membership fee
         },
         {
           firstName: "James",
@@ -180,6 +186,7 @@ export async function seedUsers(transaction?: Transaction) {
           coordinatorId: coordinators[1].id,
           delegateCode: "DEL003",
           membershipDate: new Date(),
+          hasPaidMembershipFee: true, // Delegate roles don't need to pay membership fee
         },
       ],
       { transaction: t }
@@ -211,6 +218,9 @@ export async function seedUsers(transaction?: Transaction) {
           coordinatorId: coordinators[0].id,
           membershipNumber: "MEM001",
           membershipDate: new Date(),
+          hasPaidMembershipFee: true, // This member has paid membership fee
+          membershipFeeAmount: 500,
+          membershipFeePaidAt: new Date(),
         },
         {
           firstName: "Bob",
@@ -233,6 +243,7 @@ export async function seedUsers(transaction?: Transaction) {
           coordinatorId: coordinators[0].id,
           membershipNumber: "MEM002",
           membershipDate: new Date(),
+          hasPaidMembershipFee: false, // This member hasn't paid membership fee yet
         },
         {
           firstName: "Carol",
@@ -255,6 +266,9 @@ export async function seedUsers(transaction?: Transaction) {
           coordinatorId: coordinators[0].id,
           membershipNumber: "MEM003",
           membershipDate: new Date(),
+          hasPaidMembershipFee: true, // This member has paid membership fee
+          membershipFeeAmount: 500,
+          membershipFeePaidAt: new Date(),
         },
         {
           firstName: "David",
@@ -277,6 +291,7 @@ export async function seedUsers(transaction?: Transaction) {
           coordinatorId: coordinators[1].id,
           membershipNumber: "MEM004",
           membershipDate: new Date(),
+          hasPaidMembershipFee: false, // This member hasn't paid membership fee yet
         },
         {
           firstName: "Eve",
@@ -299,6 +314,9 @@ export async function seedUsers(transaction?: Transaction) {
           coordinatorId: coordinators[1].id,
           membershipNumber: "MEM005",
           membershipDate: new Date(),
+          hasPaidMembershipFee: true, // This member has paid membership fee
+          membershipFeeAmount: 500,
+          membershipFeePaidAt: new Date(),
         },
       ],
       { transaction: t }
@@ -327,6 +345,7 @@ export async function seedUsers(transaction?: Transaction) {
           isPhoneVerified: false,
           isIdNumberVerified: false,
           membershipNumber: "MEM006",
+          hasPaidMembershipFee: false, // Pending members haven't paid membership fee
         },
         {
           firstName: "Grace",
@@ -346,6 +365,7 @@ export async function seedUsers(transaction?: Transaction) {
           isPhoneVerified: false,
           isIdNumberVerified: false,
           membershipNumber: "MEM007",
+          hasPaidMembershipFee: false, // Pending members haven't paid membership fee
         },
       ],
       { transaction: t }

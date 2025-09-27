@@ -101,9 +101,11 @@ export class DependantController {
         });
       }
 
+      const includeDocuments = req.query.includeDocuments === "true";
       const result = await DependantService.getDependantById(
         dependantId,
-        userId
+        userId,
+        includeDocuments
       );
 
       if (!result.success) {
@@ -351,6 +353,49 @@ export class DependantController {
         "Error in getPendingVerificationDependants controller:",
         error
       );
+      return res.status(500).json({
+        success: false,
+        message: "Internal server error",
+      });
+    }
+  }
+
+  /**
+   * Get documents for a specific dependant
+   */
+  static async getDependantDocuments(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user?.id;
+      const { dependantId } = req.params;
+
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          message: "Unauthorized",
+        });
+      }
+
+      const result = await DependantService.getDependantDocuments(
+        dependantId,
+        userId
+      );
+
+      if (!result.success) {
+        return res.status(result.error?.statusCode || 500).json({
+          success: false,
+          message:
+            result.error?.message || "Failed to fetch dependant documents",
+          error: result.error,
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "Dependant documents fetched successfully",
+        data: result.data,
+      });
+    } catch (error) {
+      logger.error("Error in getDependantDocuments controller:", error);
       return res.status(500).json({
         success: false,
         message: "Internal server error",
