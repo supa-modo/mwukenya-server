@@ -6,6 +6,7 @@ import PaymentService from "../services/PaymentService";
 import MpesaService from "../services/MpesaService";
 import MembershipService from "../services/MembershipService";
 import Payment from "../models/Payment";
+import User from "../models/User";
 import { PaymentStatus } from "../models/types";
 
 export class PaymentController {
@@ -1158,6 +1159,111 @@ export class PaymentController {
           error: {
             code: "ADMIN_MEMBERSHIP_PAYMENTS_ERROR",
             message: "Failed to get membership payments",
+          },
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
+  }
+
+  /**
+   * Admin manual payment verification (for pending payments that failed to auto-verify)
+   */
+  public static async adminManualVerifyPayment(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      const schema = Joi.object({
+        transactionReference: Joi.string().required(),
+        mpesaReceiptNumber: Joi.string().required(),
+      });
+
+      const { error, value } = schema.validate(req.body);
+      if (error) {
+        throw new ApiError(error.details[0].message, "VALIDATION_ERROR", 400);
+      }
+
+      // Check admin access
+      if (req.user?.role !== "admin" && req.user?.role !== "superadmin") {
+        throw new ApiError("Access denied", "FORBIDDEN", 403);
+      }
+
+      const { transactionReference, mpesaReceiptNumber } = value;
+
+      // Find payment
+      const payment = await Payment.findByTransactionReference(
+        transactionReference
+      );
+      if (!payment) {
+        throw new ApiError("Payment not found", "PAYMENT_NOT_FOUND", 404);
+      }
+
+      // Check if already completed
+      if (payment.paymentStatus === PaymentStatus.COMPLETED) {
+        throw new ApiError(
+          "Payment already completed",
+          "PAYMENT_ALREADY_COMPLETED",
+          400
+        );
+      }
+
+      // Check if payment is pending
+      if (payment.paymentStatus !== PaymentStatus.PENDING) {
+        throw new ApiError(
+          "Only pending payments can be manually verified",
+          "INVALID_PAYMENT_STATUS",
+          400
+        );
+      }
+
+      // Use PaymentService to handle both premium and membership payments
+      await PaymentService.adminManualVerifyPayment(
+        payment.id,
+        mpesaReceiptNumber,
+        req.user.id
+      );
+
+      // Fetch updated payment
+      const updatedPayment = await Payment.findByPk(payment.id, {
+        include: [
+          {
+            model: User,
+            as: "user",
+            attributes: ["id", "firstName", "lastName", "membershipNumber"],
+          },
+        ],
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          payment: updatedPayment,
+          paymentId: payment.id,
+          status: PaymentStatus.COMPLETED,
+          mpesaReceiptNumber,
+        },
+        message: "Payment manually verified and completed successfully",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      logger.error("Error in admin manual payment verification:", error);
+
+      if (error instanceof ApiError) {
+        res.status(error.statusCode).json({
+          success: false,
+          error: {
+            code: error.code,
+            message: error.message,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: {
+            code: "ADMIN_MANUAL_VERIFICATION_ERROR",
+            message: "Failed to manually verify payment",
           },
           timestamp: new Date().toISOString(),
         });

@@ -513,6 +513,160 @@ export class MembershipService {
   }
 
   /**
+   * Admin manual verification of membership payment
+   * Updates user membership status and payment record
+   */
+  public static async adminManualVerifyMembershipPayment(
+    paymentId: string,
+    mpesaReceiptNumber: string,
+    adminUserId: string
+  ): Promise<void> {
+    const transaction = await sequelize.transaction();
+
+    try {
+      const payment = await Payment.findByPk(paymentId, { transaction });
+      if (!payment) {
+        throw new ApiError("Payment not found", "PAYMENT_NOT_FOUND", 404);
+      }
+
+      if (payment.paymentType !== PaymentType.MEMBERSHIP) {
+        throw new ApiError(
+          "Payment is not a membership payment",
+          "INVALID_PAYMENT_TYPE",
+          400
+        );
+      }
+
+      if (payment.paymentStatus === PaymentStatus.COMPLETED) {
+        throw new ApiError(
+          "Payment already completed",
+          "PAYMENT_ALREADY_COMPLETED",
+          400
+        );
+      }
+
+      if (payment.paymentStatus !== PaymentStatus.PENDING) {
+        throw new ApiError(
+          "Only pending payments can be manually verified",
+          "INVALID_PAYMENT_STATUS",
+          400
+        );
+      }
+
+      // Get the user
+      const user = await User.findByPk(payment.userId, { transaction });
+      if (!user) {
+        throw new ApiError("User not found", "USER_NOT_FOUND", 404);
+      }
+
+      // Update payment status
+      await payment.update(
+        {
+          paymentStatus: PaymentStatus.COMPLETED,
+          processedAt: new Date(),
+          mpesaReceiptNumber: mpesaReceiptNumber,
+          callbackReceived: true, // Mark as if callback was received
+        },
+        { transaction }
+      );
+
+      // Update user membership fee status
+      await user.update(
+        {
+          hasPaidMembershipFee: true,
+          membershipFeeAmount: payment.amount,
+          membershipFeePaidAt: new Date(),
+          membershipFeePaymentId: payment.id,
+        },
+        { transaction }
+      );
+
+      await transaction.commit();
+
+      // Log admin verification in audit trail
+      try {
+        const { default: AuditTrailService } = await import(
+          "./AuditTrailService"
+        );
+        await AuditTrailService.logAdminAction(
+          adminUserId,
+          "manual_membership_payment_verification",
+          "payment",
+          paymentId,
+          {
+            oldValues: {
+              paymentStatus: "pending",
+              mpesaReceiptNumber: null,
+            },
+            newValues: {
+              paymentStatus: "completed",
+              mpesaReceiptNumber,
+              amount: payment.amount,
+              userId: payment.userId,
+              transactionReference: payment.transactionReference,
+              membershipNumber: user.membershipNumber,
+            },
+          },
+          undefined, // ipAddress
+          {
+            reason: "Admin manual verification of pending membership payment",
+            originalStatus: "pending",
+            newStatus: "completed",
+          }
+        );
+
+        // Additional logging for membership fee payment
+        await AuditTrailService.logAdminAction(
+          adminUserId,
+          "membership_fee_completed",
+          "user",
+          payment.userId,
+          {
+            oldValues: {
+              hasPaidMembershipFee: false,
+              membershipFeeAmount: null,
+              membershipFeePaidAt: null,
+            },
+            newValues: {
+              hasPaidMembershipFee: true,
+              membershipFeeAmount: payment.amount,
+              membershipFeePaidAt: new Date(),
+              membershipFeePaymentId: payment.id,
+            },
+          },
+          undefined, // ipAddress
+          {
+            reason: "Membership fee payment completed via admin verification",
+            paymentMethod: payment.paymentMethod,
+            mpesaReceiptNumber,
+            adminVerified: true,
+            transactionReference: payment.transactionReference,
+            membershipNumber: user.membershipNumber,
+          }
+        );
+      } catch (auditError) {
+        logger.warn(
+          "Failed to log admin membership verification in audit trail:",
+          auditError
+        );
+      }
+
+      logger.info("Membership payment manually verified by admin:", {
+        paymentId,
+        userId: payment.userId,
+        adminUserId,
+        receiptNumber: mpesaReceiptNumber,
+        amount: payment.amount,
+        membershipNumber: user.membershipNumber,
+      });
+    } catch (error: any) {
+      await transaction.rollback();
+      logger.error("Error in admin manual membership verification:", error);
+      throw error;
+    }
+  }
+
+  /**
    * Generate unique transaction reference for membership payment
    */
   private static generateTransactionReference(userId: string): string {

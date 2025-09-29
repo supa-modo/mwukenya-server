@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authenticate, requireAdmin } from "../middleware/auth";
+import { authenticate, requireAdmin, requireRole } from "../middleware/auth";
 import { rateLimitMiddleware } from "../middleware/rateLimiter";
 import PaymentController from "../controllers/PaymentController";
 
@@ -59,6 +59,15 @@ router.post(
   authenticate,
   paymentRateLimit,
   PaymentController.verifyPaymentSecure
+);
+
+// Admin manual payment verification - requires admin authentication
+router.post(
+  "/admin/verify-manual",
+  authenticate,
+  requireAdmin,
+  paymentRateLimit,
+  PaymentController.adminManualVerifyPayment
 );
 
 // M-Pesa callback endpoint - no authentication (called by M-Pesa)

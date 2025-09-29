@@ -277,7 +277,6 @@ MedicalScheme.init(
     delegateCommission: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
-      defaultValue: 2.0,
       field: "delegate_commission",
       validate: {
         min: 0,
@@ -286,7 +285,6 @@ MedicalScheme.init(
     coordinatorCommission: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
-      defaultValue: 1.0,
       field: "coordinator_commission",
       validate: {
         min: 0,

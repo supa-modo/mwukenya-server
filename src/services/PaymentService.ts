@@ -1308,6 +1308,199 @@ export class PaymentService {
   }
 
   /**
+   * Admin manual payment verification (for pending payments that failed to auto-verify)
+   * Handles both premium and membership payments properly
+   */
+  public async adminManualVerifyPayment(
+    paymentId: string,
+    mpesaReceiptNumber: string,
+    adminUserId: string
+  ): Promise<void> {
+    const transaction: Transaction = await sequelize.transaction();
+
+    try {
+      const payment = await Payment.findByPk(paymentId, { transaction });
+      if (!payment) {
+        throw new ApiError("Payment not found", "PAYMENT_NOT_FOUND", 404);
+      }
+
+      if (payment.paymentStatus === PaymentStatus.COMPLETED) {
+        throw new ApiError(
+          "Payment already completed",
+          "PAYMENT_ALREADY_COMPLETED",
+          400
+        );
+      }
+
+      if (payment.paymentStatus !== PaymentStatus.PENDING) {
+        throw new ApiError(
+          "Only pending payments can be manually verified",
+          "INVALID_PAYMENT_STATUS",
+          400
+        );
+      }
+
+      // Handle membership payments
+      if (payment.paymentType === PaymentType.MEMBERSHIP) {
+        // Import MembershipService dynamically to avoid circular dependency
+        const { default: MembershipService } = await import(
+          "./MembershipService"
+        );
+
+        // Use MembershipService to complete the membership payment
+        await transaction.rollback(); // Rollback this transaction
+        await MembershipService.adminManualVerifyMembershipPayment(
+          paymentId,
+          mpesaReceiptNumber,
+          adminUserId
+        );
+        return;
+      }
+
+      // Handle premium payments
+      // Check if this payment needs a subscription to be created
+      let subscription: MemberSubscription | null = null;
+
+      if (!payment.subscriptionId) {
+        // This is a new subscription payment - extract scheme ID from description
+        const schemeIdMatch = payment.mpesaTransactionDescription?.match(
+          /\[SchemeID:([^\]]+)\]/
+        );
+
+        if (schemeIdMatch) {
+          const schemeId = schemeIdMatch[1];
+
+          // Validate the scheme exists
+          const scheme = await MedicalScheme.findByPk(schemeId, {
+            transaction,
+          });
+          if (!scheme) {
+            throw new ApiError(
+              "Medical scheme not found",
+              "SCHEME_NOT_FOUND",
+              404
+            );
+          }
+
+          // Get user for delegate/coordinator info
+          const user = await User.findByPk(payment.userId, { transaction });
+          if (!user) {
+            throw new ApiError("User not found", "USER_NOT_FOUND", 404);
+          }
+
+          // Create the subscription
+          subscription = await MemberSubscription.create(
+            {
+              userId: payment.userId,
+              schemeId: schemeId,
+              subscriptionDate: new Date(),
+              status: SubscriptionStatus.ACTIVE,
+              effectiveDate: payment.coverageStartDate,
+              registrationDelegateId: user.delegateId,
+              registrationCoordinatorId: user.coordinatorId,
+            },
+            { transaction }
+          );
+
+          // Update the payment with the new subscription ID
+          await payment.update(
+            {
+              subscriptionId: subscription.id,
+            },
+            { transaction }
+          );
+
+          logger.info("Created new subscription for admin verified payment:", {
+            userId: payment.userId,
+            subscriptionId: subscription.id,
+            schemeId: schemeId,
+            paymentId: payment.id,
+            adminUserId,
+          });
+        }
+      }
+
+      // Update payment status
+      await payment.update(
+        {
+          paymentStatus: PaymentStatus.COMPLETED,
+          processedAt: new Date(),
+          mpesaReceiptNumber: mpesaReceiptNumber,
+          callbackReceived: true, // Mark as if callback was received
+        },
+        { transaction }
+      );
+
+      // Create payment coverage records for premium payments
+      if (payment.subscriptionId) {
+        await PaymentCoverage.createCoverageRange(
+          payment.userId,
+          payment.subscriptionId,
+          payment.coverageStartDate,
+          payment.coverageEndDate,
+          payment.id,
+          payment.amount
+        );
+      }
+
+      await transaction.commit();
+
+      // Log admin verification in audit trail
+      try {
+        const { default: AuditTrailService } = await import(
+          "./AuditTrailService"
+        );
+        await AuditTrailService.logAdminAction(
+          adminUserId,
+          "manual_payment_verification",
+          "payment",
+          paymentId,
+          {
+            oldValues: {
+              paymentStatus: "pending",
+              mpesaReceiptNumber: null,
+            },
+            newValues: {
+              paymentStatus: "completed",
+              mpesaReceiptNumber,
+              amount: payment.amount,
+              paymentType: payment.paymentType,
+              subscriptionCreated:
+                !payment.subscriptionId && subscription !== null,
+              transactionReference: payment.transactionReference,
+            },
+          },
+          undefined, // ipAddress
+          {
+            reason: "Admin manual verification of pending payment",
+            originalStatus: "pending",
+            newStatus: "completed",
+          }
+        );
+      } catch (auditError) {
+        logger.warn(
+          "Failed to log admin manual verification in audit trail:",
+          auditError
+        );
+      }
+
+      logger.info("Payment manually verified by admin:", {
+        paymentId,
+        adminUserId,
+        receiptNumber: mpesaReceiptNumber,
+        amount: payment.amount,
+        paymentType: payment.paymentType,
+        subscriptionCreated: !payment.subscriptionId && subscription !== null,
+        subscriptionId: subscription?.id || payment.subscriptionId,
+      });
+    } catch (error: any) {
+      await transaction.rollback();
+      logger.error("Error in admin manual payment verification:", error);
+      throw error;
+    }
+  }
+
+  /**
    * Generate unique transaction reference
    */
   private generateTransactionReference(userId: string): string {
