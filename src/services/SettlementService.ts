@@ -1,5 +1,5 @@
 import { Op, Transaction } from "sequelize";
-import { startOfDay, endOfDay, subDays, format } from "date-fns";
+import { startOfDay, endOfDay, subDays, format, isFuture } from "date-fns";
 import sequelize from "../config/database";
 import { config } from "../config";
 import logger from "../utils/logger";
@@ -54,6 +54,16 @@ export class SettlementService {
 
     try {
       const settlementDate = startOfDay(date);
+
+      // Validate that the settlement date is not in the future
+      if (isFuture(settlementDate)) {
+        await transaction.rollback();
+        throw new ApiError(
+          "Settlement cannot be generated for future dates. Please select a date that is today or earlier.",
+          "FUTURE_DATE_NOT_ALLOWED",
+          400
+        );
+      }
 
       // Check if settlement already exists
       const existingSettlement = await DailySettlement.getSettlementByDate(

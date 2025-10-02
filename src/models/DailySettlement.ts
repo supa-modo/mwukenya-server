@@ -23,6 +23,11 @@ export interface DailySettlementAttributes {
   processedAt?: Date;
   processedBy?: string;
   notes?: string;
+  shaProcessedAt?: Date;
+  mwuProcessedAt?: Date;
+  commissionsProcessedAt?: Date;
+  shaTransactionReference?: string;
+  mwuTransactionReference?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -47,6 +52,11 @@ class DailySettlement extends Model<
   declare processedAt: CreationOptional<Date>;
   declare processedBy: CreationOptional<ForeignKey<string>>;
   declare notes: CreationOptional<string>;
+  declare shaProcessedAt: CreationOptional<Date>;
+  declare mwuProcessedAt: CreationOptional<Date>;
+  declare commissionsProcessedAt: CreationOptional<Date>;
+  declare shaTransactionReference: CreationOptional<string>;
+  declare mwuTransactionReference: CreationOptional<string>;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 
@@ -310,6 +320,31 @@ DailySettlement.init(
     notes: {
       type: DataTypes.TEXT,
       allowNull: true,
+    },
+    shaProcessedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: "sha_processed_at",
+    },
+    mwuProcessedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: "mwu_processed_at",
+    },
+    commissionsProcessedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: "commissions_processed_at",
+    },
+    shaTransactionReference: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      field: "sha_transaction_reference",
+    },
+    mwuTransactionReference: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      field: "mwu_transaction_reference",
     },
     createdAt: {
       type: DataTypes.DATE,

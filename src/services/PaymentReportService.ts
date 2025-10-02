@@ -53,10 +53,10 @@ export class PaymentReportService {
             as: "user",
             attributes: [
               "id",
-              "first_name",
-              "last_name",
-              "phone_number",
-              "id_number",
+              "firstName",
+              "lastName",
+              "phoneNumber",
+              "idNumber",
             ],
           },
           {
@@ -66,7 +66,7 @@ export class PaymentReportService {
               {
                 model: MedicalScheme,
                 as: "scheme",
-                attributes: ["name", "code", "coverage_type"],
+                attributes: ["name", "code", "coverageType"],
               },
             ],
           },

@@ -5,7 +5,7 @@ import SettlementService from "../services/SettlementService";
 import BankTransferService from "../services/BankTransferService";
 import DailySettlement from "../models/DailySettlement";
 import CommissionPayout from "../models/CommissionPayout";
-import { startOfDay, endOfDay, subDays, parseISO } from "date-fns";
+import { startOfDay, endOfDay, subDays, parseISO, isFuture } from "date-fns";
 import logger from "../utils/logger";
 import Joi from "joi";
 
@@ -18,13 +18,18 @@ export class SettlementController {
   ): Promise<boolean> {
     try {
       // Check if SHA bank transfer is processed
-      const shaProcessed = settlement.sha_processed_at !== null;
+      const shaProcessed =
+        settlement.shaProcessedAt !== null &&
+        settlement.shaProcessedAt !== undefined;
 
       // Check if MWU bank transfer is processed
-      const mwuProcessed = settlement.mwu_processed_at !== null;
+      const mwuProcessed =
+        settlement.mwuProcessedAt !== null &&
+        settlement.mwuProcessedAt !== undefined;
 
       // Check if commission payouts are processed
-      // We need to check if there are any pending commission payouts for this settlement
+      // Option 1: Check if commissionsProcessedAt is set
+      // Option 2: Check if there are any pending commission payouts
       const pendingPayouts = await CommissionPayout.findAll({
         where: {
           settlementId: settlement.id,
@@ -32,9 +37,20 @@ export class SettlementController {
         },
       });
 
-      const commissionsProcessed = pendingPayouts.length === 0;
+      const commissionsProcessed =
+        (settlement.commissionsProcessedAt !== null &&
+          settlement.commissionsProcessedAt !== undefined) ||
+        pendingPayouts.length === 0;
 
       // All processes must be completed
+      logger.info("Checking if all processes completed:", {
+        settlementId: settlement.id,
+        shaProcessed,
+        mwuProcessed,
+        commissionsProcessed,
+        pendingPayoutsCount: pendingPayouts.length,
+      });
+
       return shaProcessed && mwuProcessed && commissionsProcessed;
     } catch (error) {
       logger.error("Error checking if all processes are completed:", error);
@@ -75,6 +91,19 @@ export class SettlementController {
       }
 
       const settlementDate = parseISO(date);
+
+      // Validate that the settlement date is not in the future
+      if (isFuture(settlementDate)) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: "SETTLEMENT_002A",
+            message:
+              "Settlement cannot be generated for future dates. Please select a date that is today or earlier.",
+          },
+        });
+        return;
+      }
       const settlement = await SettlementService.generateDailySettlement(
         settlementDate
       );
@@ -545,6 +574,62 @@ export class SettlementController {
         paymentMethod
       );
 
+      // Get the payout to find its settlement
+      const payout = await CommissionPayout.findByPk(payoutId);
+      if (payout && payout.settlementId) {
+        const settlement = await DailySettlement.findByPk(payout.settlementId);
+
+        if (settlement) {
+          // Check if all commission payouts are now processed
+          const pendingPayouts = await CommissionPayout.findAll({
+            where: {
+              settlementId: settlement.id,
+              status: "pending",
+            },
+          });
+
+          // If all commission payouts are processed (no pending ones left)
+          if (
+            pendingPayouts.length === 0 &&
+            !settlement.commissionsProcessedAt
+          ) {
+            await settlement.update({
+              commissionsProcessedAt: new Date(),
+            });
+            logger.info(
+              "All commission payouts completed after manual processing",
+              {
+                settlementId: settlement.id,
+              }
+            );
+
+            // Check if all three processes are now completed
+            const updatedSettlement = await DailySettlement.findByPk(
+              settlement.id
+            );
+            if (updatedSettlement) {
+              const isAllCompleted = await this.checkIfAllProcessesCompleted(
+                updatedSettlement
+              );
+
+              if (isAllCompleted) {
+                await updatedSettlement.update({
+                  status: "completed",
+                  processedAt: new Date(),
+                  processedBy: userId,
+                });
+                logger.info(
+                  "Settlement marked as completed after manual payout - all processes done",
+                  {
+                    settlementId: updatedSettlement.id,
+                  }
+                );
+              }
+            }
+          }
+        }
+      }
+
       res.status(200).json({
         success: true,
         message: "Commission payout marked as processed",
@@ -612,6 +697,164 @@ export class SettlementController {
           message: "Failed to mark payout as failed",
         },
       });
+    }
+  };
+
+  /**
+   * Retry failed commission payouts for a settlement
+   */
+  retryFailedPayouts = async (
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> => {
+    try {
+      const { settlementId } = req.params;
+      const userId = req.user?.id;
+
+      const schema = Joi.object({
+        password: Joi.string().required(),
+      });
+
+      const { error, value } = schema.validate(req.body);
+      if (error) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: "SETTLEMENT_022A",
+            message: error.details[0].message,
+          },
+        });
+        return;
+      }
+
+      if (!userId) {
+        res.status(401).json({
+          success: false,
+          error: {
+            code: "SETTLEMENT_022B",
+            message: "User not authenticated",
+          },
+        });
+        return;
+      }
+
+      if (!settlementId) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: "SETTLEMENT_022C",
+            message: "Settlement ID is required",
+          },
+        });
+        return;
+      }
+
+      const { password } = value;
+
+      // Validate payment password
+      const isValidPassword =
+        BankTransferService.validatePaymentPassword(password);
+      if (!isValidPassword) {
+        res.status(403).json({
+          success: false,
+          error: {
+            code: "SETTLEMENT_022D",
+            message: "Invalid payment confirmation password",
+          },
+        });
+        return;
+      }
+
+      // Retry failed payouts
+      const { default: CommissionPayoutService } = await import(
+        "../services/CommissionPayoutService"
+      );
+
+      const results = await CommissionPayoutService.retryFailedPayouts(
+        settlementId,
+        userId
+      );
+
+      // Check if all commission payouts are now processed
+      const settlement = await DailySettlement.findByPk(settlementId);
+      if (settlement) {
+        const pendingPayouts = await CommissionPayout.findAll({
+          where: {
+            settlementId: settlement.id,
+            status: "pending",
+          },
+        });
+
+        // If all commission payouts are processed (no pending ones left)
+        if (pendingPayouts.length === 0 && !settlement.commissionsProcessedAt) {
+          await settlement.update({
+            commissionsProcessedAt: new Date(),
+          });
+          logger.info(
+            "All commission payouts completed after retrying failed ones",
+            {
+              settlementId: settlement.id,
+            }
+          );
+
+          // Check if all three processes are now completed
+          const updatedSettlement = await DailySettlement.findByPk(
+            settlementId
+          );
+          if (updatedSettlement) {
+            const isAllCompleted = await this.checkIfAllProcessesCompleted(
+              updatedSettlement
+            );
+
+            if (isAllCompleted) {
+              await updatedSettlement.update({
+                status: "completed",
+                processedAt: new Date(),
+                processedBy: userId,
+              });
+              logger.info(
+                "Settlement marked as completed after retrying failed payouts",
+                {
+                  settlementId: updatedSettlement.id,
+                }
+              );
+            }
+          }
+        }
+      }
+
+      res.status(200).json({
+        success: true,
+        data: {
+          ...results,
+          allCommissionsProcessed:
+            results.failedRetries === 0 && results.retriedPayouts > 0,
+        },
+        message:
+          results.failedRetries > 0
+            ? `Retry completed: ${results.successfulRetries} successful, ${results.failedRetries} still failed.`
+            : "All failed commission payouts retried successfully",
+      });
+    } catch (error: any) {
+      logger.error("Error retrying failed payouts:", error);
+
+      if (error instanceof ApiError) {
+        res.status(error.statusCode).json({
+          success: false,
+          error: {
+            code: error.code,
+            message: error.message,
+          },
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: {
+            code: "SETTLEMENT_022E",
+            message: "Failed to retry failed payouts",
+          },
+        });
+      }
     }
   };
 
@@ -820,72 +1063,6 @@ export class SettlementController {
           error: {
             code: "SETTLEMENT_030",
             message: "Failed to initiate settlement payouts",
-          },
-        });
-      }
-    }
-  };
-
-  /**
-   * Retry failed payouts for a settlement (admin only)
-   */
-  retryFailedPayouts = async (
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> => {
-    try {
-      const { settlementId } = req.params;
-      const userId = req.user?.id;
-
-      if (!userId) {
-        res.status(401).json({
-          success: false,
-          error: {
-            code: "SETTLEMENT_031",
-            message: "User not authenticated",
-          },
-        });
-        return;
-      }
-
-      if (!settlementId) {
-        res.status(400).json({
-          success: false,
-          error: {
-            code: "SETTLEMENT_032",
-            message: "Settlement ID is required",
-          },
-        });
-        return;
-      }
-
-      const results = await SettlementService.retryFailedPayouts(
-        settlementId,
-        userId
-      );
-
-      res.status(200).json({
-        success: true,
-        data: results,
-        message: "Failed payouts retried successfully",
-      });
-    } catch (error) {
-      console.error("Error retrying failed payouts:", error);
-
-      if (error instanceof ApiError) {
-        res.status(error.statusCode).json({
-          success: false,
-          error: {
-            code: error.code,
-            message: error.message,
-          },
-        });
-      } else {
-        res.status(500).json({
-          success: false,
-          error: {
-            code: "SETTLEMENT_033",
-            message: "Failed to retry failed payouts",
           },
         });
       }
@@ -1345,14 +1522,20 @@ export class SettlementController {
           );
       }
 
-      // Update settlement status
-      const updateField =
-        transferType === "sha" ? "sha_processed_at" : "mwu_processed_at";
+      // Update settlement with processing timestamp and transaction reference
+      const updateFields: any = {};
+      if (transferType === "sha") {
+        updateFields.shaProcessedAt = new Date();
+        updateFields.shaTransactionReference =
+          transactionDetails.transactionCode;
+      } else {
+        updateFields.mwuProcessedAt = new Date();
+        updateFields.mwuTransactionReference =
+          transactionDetails.transactionCode;
+      }
 
-      // Only update the specific field, don't change overall status yet
-      await settlement.update({
-        [updateField]: new Date(),
-      });
+      // Only update the specific fields, don't change overall status yet
+      await settlement.update(updateFields);
 
       // Check if all required processes are completed
       const updatedSettlement = await DailySettlement.findByPk(settlementId);
@@ -1365,7 +1548,23 @@ export class SettlementController {
         if (isAllCompleted) {
           await updatedSettlement.update({
             status: "completed",
+            processedAt: new Date(),
+            processedBy: req.user?.id,
           });
+          logger.info("Settlement marked as completed - all processes done", {
+            settlementId: updatedSettlement.id,
+          });
+        } else {
+          logger.info(
+            "Settlement not yet completed - waiting for other processes",
+            {
+              settlementId: updatedSettlement.id,
+              shaProcessed: updatedSettlement.shaProcessedAt !== null,
+              mwuProcessed: updatedSettlement.mwuProcessedAt !== null,
+              commissionsProcessed:
+                updatedSettlement.commissionsProcessedAt !== null,
+            }
+          );
         }
       }
 
@@ -1552,25 +1751,59 @@ export class SettlementController {
         userId
       );
 
-      // Check if all required processes are completed after commission processing
+      // Get settlement and check if all commission payouts are now processed
       const settlement = await DailySettlement.findByPk(settlementId);
       if (settlement) {
-        const isAllCompleted = await this.checkIfAllProcessesCompleted(
-          settlement
-        );
+        // Check if there are any pending commission payouts left
+        const pendingPayouts = await CommissionPayout.findAll({
+          where: {
+            settlementId: settlement.id,
+            status: "pending",
+          },
+        });
 
-        // Only mark as completed if all processes are done
-        if (isAllCompleted) {
+        // If all commission payouts are processed (no pending ones left)
+        if (pendingPayouts.length === 0) {
           await settlement.update({
-            status: "completed",
+            commissionsProcessedAt: new Date(),
           });
+          logger.info("All commission payouts completed for settlement", {
+            settlementId: settlement.id,
+          });
+        }
+
+        // Check if all three processes (SHA, MWU, Commissions) are now completed
+        const updatedSettlement = await DailySettlement.findByPk(settlementId);
+        if (updatedSettlement) {
+          const isAllCompleted = await this.checkIfAllProcessesCompleted(
+            updatedSettlement
+          );
+
+          // Only mark settlement as completed if all three processes are done
+          if (isAllCompleted) {
+            await updatedSettlement.update({
+              status: "completed",
+              processedAt: new Date(),
+              processedBy: userId,
+            });
+            logger.info("Settlement marked as completed - all processes done", {
+              settlementId: updatedSettlement.id,
+            });
+          }
         }
       }
 
       res.status(200).json({
         success: true,
-        data: results,
-        message: "Commission payouts processed successfully",
+        data: {
+          ...results,
+          allCommissionsProcessed:
+            results.failedPayouts === 0 && results.totalPayouts > 0,
+        },
+        message:
+          results.failedPayouts > 0
+            ? `Commission payouts processed: ${results.successfulPayouts} successful, ${results.failedPayouts} failed. Please retry failed payments.`
+            : "All commission payouts processed successfully",
       });
     } catch (error: any) {
       logger.error("Error processing commission payouts:", error);
