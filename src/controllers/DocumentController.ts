@@ -683,6 +683,119 @@ class DocumentController {
   };
 
   /**
+   * Admin: Upload a document on behalf of a user
+   */
+  public async uploadDocumentForUser(
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> {
+    try {
+      const { userId } = req.params;
+      const { name, type, description } = req.body;
+      const file = req.file;
+      const adminId = req.user!.id;
+
+      // Validate required fields
+      if (!name || !type || !file) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: "DOC_001",
+            message:
+              "Missing required fields: name, type, and file are required",
+          },
+          timestamp: new Date().toISOString(),
+        } as ApiResponse);
+        return;
+      }
+
+      // Validate document type
+      if (!Object.values(DocumentType).includes(type as DocumentType)) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: "DOC_002",
+            message: "Invalid document type",
+          },
+          timestamp: new Date().toISOString(),
+        } as ApiResponse);
+        return;
+      }
+
+      // Verify target user exists
+      const User = require("../models").User;
+      const targetUser = await User.findByPk(userId);
+      if (!targetUser) {
+        res.status(404).json({
+          success: false,
+          error: {
+            code: "DOC_018",
+            message: "Target user not found",
+          },
+          timestamp: new Date().toISOString(),
+        } as ApiResponse);
+        return;
+      }
+
+      // Generate S3 key for the target user
+      const fileExtension = getFileExtensionFromMimeType(file.mimetype);
+      const s3Key = s3Service.generateS3Key(userId, fileExtension, "documents");
+
+      // Upload file to S3
+      const uploadResult = await s3Service.uploadFile(
+        file.buffer,
+        s3Key,
+        file.mimetype,
+        file.originalname
+      );
+
+      // Create document record in database
+      const document = await Document.create({
+        userId,
+        entityType: "user",
+        entityId: userId,
+        name,
+        type: type as DocumentType,
+        description,
+        fileName: file.originalname,
+        fileSize: file.size,
+        mimeType: file.mimetype,
+        s3Key,
+        s3Bucket: uploadResult.Bucket,
+        url: uploadResult.Location,
+        status: DocumentStatus.PENDING,
+        uploadedBy: adminId, // Track which admin uploaded this
+      });
+
+      logger.info(
+        `Document uploaded by admin ${adminId} for user ${userId}: ${document.id}`
+      );
+
+      res.status(201).json({
+        success: true,
+        data: document.toJSON(),
+        message: "Document uploaded successfully on behalf of user",
+        timestamp: new Date().toISOString(),
+      } as ApiResponse);
+    } catch (error) {
+      logger.error("Error uploading document for user:", error);
+
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error occurred";
+
+      res.status(500).json({
+        success: false,
+        error: {
+          code: "DOC_019",
+          message: "Failed to upload document for user",
+          details: errorMessage,
+        },
+        timestamp: new Date().toISOString(),
+      } as ApiResponse);
+    }
+  }
+
+  /**
    * Helper method to determine content type from filename
    */
   private getContentType(fileName: string): string {

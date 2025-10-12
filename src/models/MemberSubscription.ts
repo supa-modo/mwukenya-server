@@ -59,11 +59,14 @@ class MemberSubscription
 
   public async getPaymentSummary(): Promise<{
     totalPaid: number;
-    totalDays: number;
+    totalDaysPaid: number;
     lastPaymentDate?: Date;
-    nextDueDate?: Date;
+    nextDueDate: Date;
     arrearsDays: number;
     arrearsAmount: number;
+    isPaidUpToDate: boolean;
+    advanceDaysPaid: number;
+    coverageEndDate: Date;
   }> {
     const { Payment } = sequelize.models;
     const payments = await Payment.findAll({
@@ -78,31 +81,51 @@ class MemberSubscription
       (sum: number, payment: any) => sum + parseFloat(payment.amount),
       0
     );
-    const totalDays = payments.reduce(
-      (sum: number, payment: any) => sum + payment.daysCovered,
+    const totalDaysPaid = payments.reduce(
+      (sum: number, payment: any) => sum + (payment.daysCovered || 0),
       0
     );
-    const lastPaymentDate = payments.length > 0 ? new Date() : undefined; // Mock for now
+    const lastPaymentDate =
+      payments.length > 0 ? (payments[0] as any).paymentDate : undefined;
 
-    // Calculate arrears
-    const daysSinceStart = Math.floor(
-      (new Date().getTime() - this.effectiveDate.getTime()) /
-        (1000 * 60 * 60 * 24)
+    // Calculate days elapsed since subscription start
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const effectiveDate = new Date(this.effectiveDate);
+    effectiveDate.setHours(0, 0, 0, 0);
+
+    const daysSinceStart = Math.max(
+      0,
+      Math.floor(
+        (today.getTime() - effectiveDate.getTime()) / (1000 * 60 * 60 * 24)
+      ) + 1
     );
-    const arrearsDays = Math.max(0, daysSinceStart - totalDays);
+
+    // Calculate arrears (overdue days)
+    const arrearsDays = Math.max(0, daysSinceStart - totalDaysPaid);
     const arrearsAmount = arrearsDays * (this.scheme?.dailyPremium || 0);
 
-    // Calculate next due date
-    const nextDueDate = new Date(this.effectiveDate);
-    nextDueDate.setDate(nextDueDate.getDate() + totalDays);
+    // Calculate advance days paid (days paid beyond today)
+    const advanceDaysPaid = Math.max(0, totalDaysPaid - daysSinceStart);
+
+    // Calculate next due date (first unpaid day)
+    const nextDueDate = new Date(effectiveDate);
+    nextDueDate.setDate(nextDueDate.getDate() + totalDaysPaid);
+
+    // Calculate coverage end date (last day covered by payments)
+    const coverageEndDate = new Date(effectiveDate);
+    coverageEndDate.setDate(coverageEndDate.getDate() + totalDaysPaid - 1);
 
     return {
       totalPaid,
-      totalDays,
+      totalDaysPaid,
       lastPaymentDate,
-      nextDueDate: arrearsDays > 0 ? new Date() : nextDueDate,
+      nextDueDate: arrearsDays > 0 ? today : nextDueDate,
       arrearsDays,
       arrearsAmount,
+      isPaidUpToDate: arrearsDays === 0,
+      advanceDaysPaid,
+      coverageEndDate,
     };
   }
 

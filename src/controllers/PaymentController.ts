@@ -21,12 +21,18 @@ export class PaymentController {
       // Validate request body
       const schema = Joi.object({
         subscriptionId: Joi.string().uuid().required(),
-        amount: Joi.number().min(1).max(100000).required(),
+        amount: Joi.number().min(1).max(100000).optional(), // Now optional - will be calculated from daysToPayFor
         phoneNumber: Joi.string()
           .pattern(/^(\+?254|0)?[17]\d{8}$/)
           .required(),
         paymentMethod: Joi.string().valid("mpesa").default("mpesa"),
-        daysCovered: Joi.number().integer().min(1).max(365).optional(),
+        daysToPayFor: Joi.number()
+          .integer()
+          .min(1)
+          .max(365)
+          .optional()
+          .default(1), // New field for days-based payment
+        daysCovered: Joi.number().integer().min(1).max(365).optional(), // Deprecated
         description: Joi.string().max(255).optional(),
       });
 
@@ -270,6 +276,65 @@ export class PaymentController {
           error: {
             code: "PAYMENT_HISTORY_ERROR",
             message: "Failed to get payment history",
+          },
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
+  }
+
+  /**
+   * Get subscription payment summary with arrears information
+   */
+  public static async getSubscriptionPaymentSummary(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        throw new ApiError("User not authenticated", "UNAUTHORIZED", 401);
+      }
+
+      const subscriptionId =
+        req.params.subscriptionId || req.query.subscriptionId;
+      if (!subscriptionId) {
+        throw new ApiError(
+          "Subscription ID is required",
+          "MISSING_SUBSCRIPTION_ID",
+          400
+        );
+      }
+
+      const summary = await PaymentService.getSubscriptionPaymentSummary(
+        userId,
+        subscriptionId as string
+      );
+
+      res.status(200).json({
+        success: true,
+        data: summary,
+        message: "Subscription payment summary retrieved successfully",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      logger.error("Error getting subscription payment summary:", error);
+
+      if (error instanceof ApiError) {
+        res.status(error.statusCode).json({
+          success: false,
+          error: {
+            code: error.code,
+            message: error.message,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: {
+            code: "SUBSCRIPTION_SUMMARY_ERROR",
+            message: "Failed to get subscription payment summary",
           },
           timestamp: new Date().toISOString(),
         });
@@ -1247,7 +1312,13 @@ export class PaymentController {
         timestamp: new Date().toISOString(),
       });
     } catch (error: any) {
-      logger.error("Error in admin manual payment verification:", error);
+      logger.error("Error in admin manual payment verification:", {
+        error: error.message || error,
+        stack: error.stack,
+        paymentId: req.body.paymentId,
+        mpesaReceiptNumber: req.body.mpesaReceiptNumber,
+        adminUserId: req.user?.id,
+      });
 
       if (error instanceof ApiError) {
         res.status(error.statusCode).json({
@@ -1264,6 +1335,7 @@ export class PaymentController {
           error: {
             code: "ADMIN_MANUAL_VERIFICATION_ERROR",
             message: "Failed to manually verify payment",
+            details: error.message || "Unknown error occurred",
           },
           timestamp: new Date().toISOString(),
         });

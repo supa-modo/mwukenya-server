@@ -17,10 +17,11 @@ import sequelize from "../config/database";
 export interface InitiatePaymentRequest {
   userId: string;
   subscriptionId: string;
-  amount: number;
+  amount?: number; // Optional - will be calculated from daysToPayFor
   phoneNumber: string;
   paymentMethod: string;
-  daysCovered?: number;
+  daysToPayFor?: number; // Number of days to pay for (default: 1)
+  daysCovered?: number; // Deprecated - use daysToPayFor
   description?: string;
 }
 
@@ -69,6 +70,7 @@ export class PaymentService {
   /**
    * Initiate a new payment with proper subscription handling
    * Subscriptions are only created AFTER successful payment
+   * Supports days-based payment with arrears validation
    */
   public async initiatePayment(
     request: InitiatePaymentRequest
@@ -82,6 +84,7 @@ export class PaymentService {
           423 // Locked status code
         );
       }
+
       // Validate user
       const user = await User.findByPk(request.userId);
       if (!user) {
@@ -108,6 +111,7 @@ export class PaymentService {
 
       let scheme: any;
       let isNewSubscription = false;
+      let paymentSummary: any = null;
 
       if (!subscription) {
         // User wants to create a new subscription - validate the scheme
@@ -129,29 +133,93 @@ export class PaymentService {
         isNewSubscription = true;
       } else {
         scheme = subscription.scheme;
+
+        if (!scheme) {
+          throw new ApiError(
+            "Medical scheme not found for subscription",
+            "SCHEME_NOT_FOUND",
+            404
+          );
+        }
+
+        // Get payment summary to check for arrears
+        paymentSummary = await subscription.getPaymentSummary();
       }
 
-      // Validate amount - ensure it's at least the daily premium
-      if (request.amount <= 0) {
-        throw new ApiError("Invalid payment amount", "INVALID_AMOUNT", 400);
-      }
+      // Determine days to pay for (default: 1 day)
+      const daysToPayFor = request.daysToPayFor || request.daysCovered || 1;
 
-      // Ensure amount is at least the daily premium
-      if (request.amount < scheme.dailyPremium) {
+      // Validate days to pay for
+      if (daysToPayFor < 1) {
         throw new ApiError(
-          `Minimum payment amount is ${scheme.dailyPremium} KES`,
+          "Days to pay for must be at least 1",
+          "INVALID_DAYS",
+          400
+        );
+      }
+
+      if (daysToPayFor > 365) {
+        throw new ApiError(
+          "Cannot pay for more than 365 days at once",
+          "DAYS_LIMIT_EXCEEDED",
+          400
+        );
+      }
+
+      // For existing subscriptions, check for arrears
+      let daysToActuallyPayFor = daysToPayFor;
+      if (paymentSummary && paymentSummary.arrearsDays > 0) {
+        // User has arrears - they must pay for arrears first
+        // Calculate minimum days they need to pay to clear arrears
+        const minimumDaysRequired = paymentSummary.arrearsDays;
+
+        if (daysToPayFor < minimumDaysRequired) {
+          throw new ApiError(
+            `You have ${
+              paymentSummary.arrearsDays
+            } overdue day(s) totaling ${paymentSummary.arrearsAmount.toFixed(
+              2
+            )} KES. You must pay for at least ${minimumDaysRequired} day(s) to clear arrears before you can make advance payments.`,
+            "ARREARS_EXIST",
+            400
+          );
+        }
+
+        // Payment will first cover arrears, then advance days if any
+        daysToActuallyPayFor = daysToPayFor;
+      }
+
+      // Calculate amount based on days
+      const calculatedAmount = daysToActuallyPayFor * scheme.dailyPremium;
+      const finalAmount = request.amount || calculatedAmount;
+
+      // Validate amount matches days (with small tolerance for rounding)
+      const expectedAmount = daysToActuallyPayFor * scheme.dailyPremium;
+      if (Math.abs(finalAmount - expectedAmount) > 0.01) {
+        throw new ApiError(
+          `Amount mismatch: Expected ${expectedAmount.toFixed(
+            2
+          )} KES for ${daysToActuallyPayFor} day(s)`,
+          "AMOUNT_MISMATCH",
+          400
+        );
+      }
+
+      // Validate minimum amount
+      if (finalAmount < scheme.dailyPremium) {
+        throw new ApiError(
+          `Minimum payment amount is ${scheme.dailyPremium} KES (1 day)`,
           "AMOUNT_TOO_LOW",
           400
         );
       }
 
-      // Calculate coverage dates and validate amount
-      const coverageDates = await this.calculateCoverageDates(
+      // Calculate coverage dates
+      const coverageDates = await this.calculateCoverageDatesNew(
         request.userId,
-        subscription?.id || request.subscriptionId, // Use subscription ID or scheme ID
-        request.amount,
-        scheme.dailyPremium,
-        request.daysCovered
+        subscription?.id,
+        daysToActuallyPayFor,
+        paymentSummary
       );
 
       // Generate unique transaction reference
@@ -166,14 +234,14 @@ export class PaymentService {
       const payment = await Payment.create({
         userId: request.userId,
         subscriptionId: subscription?.id, // Undefined for new subscriptions
-        amount: request.amount,
+        amount: finalAmount,
         paymentDate: new Date(),
-        settlementDate: settlementDate, // Track which settlement this payment belongs to
+        settlementDate: settlementDate,
         paymentMethod: request.paymentMethod,
         transactionReference,
         paymentStatus: PaymentStatus.PENDING,
-        paymentType: PaymentType.PREMIUM, // Set payment type for premium payments
-        daysCovered: coverageDates.daysCovered,
+        paymentType: PaymentType.PREMIUM,
+        daysCovered: daysToActuallyPayFor,
         coverageStartDate: coverageDates.startDate,
         coverageEndDate: coverageDates.endDate,
         delegateCommission: scheme.delegateCommission || 2.0,
@@ -195,16 +263,18 @@ export class PaymentService {
           request.userId,
           payment.id,
           {
-            amount: request.amount,
+            amount: finalAmount,
             paymentMethod: request.paymentMethod,
             settlementDate: settlementDate,
             schemeId: scheme.id,
             isNewSubscription,
+            daysToPayFor: daysToActuallyPayFor,
+            arrearsDays: paymentSummary?.arrearsDays || 0,
           },
           {
             transactionReference,
             phoneNumber: request.phoneNumber,
-            daysCovered: coverageDates.daysCovered,
+            daysCovered: daysToActuallyPayFor,
           }
         );
       } catch (auditError) {
@@ -214,18 +284,14 @@ export class PaymentService {
         );
       }
 
-      // Store scheme ID for new subscriptions (we'll need it when payment succeeds)
+      // Store scheme ID for new subscriptions
       if (isNewSubscription) {
         await payment.update({
-          // Store scheme ID in the transaction description for retrieval later
           mpesaTransactionDescription: `${
             request.description || "MWU Kenya Premium Payment"
           } [SchemeID:${scheme.id}]`,
         });
       }
-
-      // Commission values are already set during payment creation
-      // No need to calculate them again since we don't have subscription yet
 
       let checkoutRequestId: string | undefined;
       let customerMessage: string | undefined;
@@ -234,13 +300,12 @@ export class PaymentService {
       if (request.paymentMethod.toLowerCase() === "mpesa") {
         const stkResponse = await MpesaService.initiateSTKPush(
           request.phoneNumber,
-          request.amount,
+          finalAmount,
           request.userId,
-          subscription?.id || scheme.id, // Use subscription ID or scheme ID
+          subscription?.id || scheme.id,
           request.description || "MWU Kenya Premium Payment"
         );
 
-        // Update payment with M-Pesa details
         payment.mpesaCheckoutRequestId = stkResponse.checkoutRequestId;
         await payment.save();
 
@@ -251,10 +316,12 @@ export class PaymentService {
       logger.info("Payment initiated successfully:", {
         paymentId: payment.id,
         userId: request.userId,
-        amount: request.amount,
+        amount: finalAmount,
+        daysToPayFor: daysToActuallyPayFor,
         transactionReference,
         isNewSubscription,
         schemeId: scheme.id,
+        hadArrears: paymentSummary?.arrearsDays > 0,
       });
 
       return {
@@ -263,8 +330,8 @@ export class PaymentService {
         transactionReference,
         checkoutRequestId,
         customerMessage,
-        amount: request.amount,
-        daysCovered: coverageDates.daysCovered,
+        amount: finalAmount,
+        daysCovered: daysToActuallyPayFor,
         coverageStartDate: coverageDates.startDate,
         coverageEndDate: coverageDates.endDate,
       };
@@ -420,6 +487,8 @@ export class PaymentService {
           processedAt: new Date(),
           mpesaReceiptNumber: mpesaReceiptNumber || payment.mpesaReceiptNumber,
           mpesaTransactionId: mpesaTransactionId || payment.mpesaTransactionId,
+          callbackReceived: true,
+          callbackReceivedAt: new Date(),
         },
         { transaction }
       );
@@ -561,6 +630,64 @@ export class PaymentService {
     } catch (error: any) {
       logger.error("Error querying M-Pesa status:", error);
       throw error;
+    }
+  }
+
+  /**
+   * Get subscription payment summary with arrears information
+   */
+  public async getSubscriptionPaymentSummary(
+    userId: string,
+    subscriptionId: string
+  ): Promise<any> {
+    try {
+      const subscription = await MemberSubscription.findOne({
+        where: {
+          id: subscriptionId,
+          userId: userId,
+        },
+        include: [
+          {
+            model: MedicalScheme,
+            as: "scheme",
+          },
+        ],
+      });
+
+      if (!subscription) {
+        throw new ApiError(
+          "Subscription not found",
+          "SUBSCRIPTION_NOT_FOUND",
+          404
+        );
+      }
+
+      const paymentSummary = await subscription.getPaymentSummary();
+
+      return {
+        subscription: {
+          id: subscription.id,
+          status: subscription.status,
+          effectiveDate: subscription.effectiveDate,
+          scheme: {
+            id: subscription.scheme.id,
+            name: subscription.scheme.name,
+            dailyPremium: subscription.scheme.dailyPremium,
+            coverageType: subscription.scheme.coverageType,
+          },
+        },
+        payment: paymentSummary,
+      };
+    } catch (error: any) {
+      logger.error("Error getting subscription payment summary:", error);
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      throw new ApiError(
+        "Failed to get subscription payment summary",
+        "SUMMARY_ERROR",
+        500
+      );
     }
   }
 
@@ -715,8 +842,8 @@ export class PaymentService {
       );
     }
 
-    // Validate amount
-    if (request.amount <= 0) {
+    // Validate amount (for legacy method - new flow uses daysToPayFor)
+    if (request.amount === undefined || request.amount <= 0) {
       throw new ApiError("Invalid payment amount", "INVALID_AMOUNT", 400);
     }
 
@@ -733,12 +860,49 @@ export class PaymentService {
   }
 
   /**
-   * Calculate coverage dates based on amount and daily premium
+   * Calculate coverage dates for new payment system
+   * Handles arrears and advance payments properly
+   */
+  private async calculateCoverageDatesNew(
+    userId: string,
+    subscriptionId: string | undefined,
+    daysToPayFor: number,
+    paymentSummary: any
+  ): Promise<{
+    startDate: Date;
+    endDate: Date;
+    daysCovered: number;
+  }> {
+    let startDate: Date;
+
+    if (!subscriptionId || !paymentSummary) {
+      // New subscription - start from today
+      startDate = startOfDay(new Date());
+    } else {
+      // Existing subscription - start from next due date
+      // If there are arrears, nextDueDate will be an overdue date
+      // If paid up to date, nextDueDate will be the next unpaid day
+      startDate = startOfDay(paymentSummary.nextDueDate);
+    }
+
+    // Calculate end date (inclusive)
+    const endDate = addDays(startDate, daysToPayFor - 1);
+
+    return {
+      startDate,
+      endDate,
+      daysCovered: daysToPayFor,
+    };
+  }
+
+  /**
+   * Calculate coverage dates based on amount and daily premium (DEPRECATED)
+   * Use calculateCoverageDatesNew instead
    */
   private async calculateCoverageDates(
     userId: string,
     subscriptionId: string,
-    amount: number,
+    amount: number | undefined,
     dailyPremium: number,
     requestedDays?: number
   ): Promise<{
@@ -746,9 +910,18 @@ export class PaymentService {
     endDate: Date;
     daysCovered: number;
   }> {
+    // Validate amount is provided for deprecated method
+    if (amount === undefined) {
+      throw new ApiError(
+        "Amount is required for legacy payment method",
+        "AMOUNT_REQUIRED",
+        400
+      );
+    }
+
     // Calculate days covered based on amount
     const calculatedDays = Math.floor(amount / dailyPremium);
-    const daysCovered = requestedDays || Math.max(calculatedDays, 1); // Ensure at least 1 day
+    const daysCovered = requestedDays || Math.max(calculatedDays, 1);
 
     if (daysCovered <= 0) {
       throw new ApiError(
@@ -1360,6 +1533,7 @@ export class PaymentService {
       // Handle premium payments
       // Check if this payment needs a subscription to be created
       let subscription: MemberSubscription | null = null;
+      let subscriptionIdToSet = payment.subscriptionId;
 
       if (!payment.subscriptionId) {
         // This is a new subscription payment - extract scheme ID from description
@@ -1402,13 +1576,7 @@ export class PaymentService {
             { transaction }
           );
 
-          // Update the payment with the new subscription ID
-          await payment.update(
-            {
-              subscriptionId: subscription.id,
-            },
-            { transaction }
-          );
+          subscriptionIdToSet = subscription.id;
 
           logger.info("Created new subscription for admin verified payment:", {
             userId: payment.userId,
@@ -1420,22 +1588,25 @@ export class PaymentService {
         }
       }
 
-      // Update payment status
+      // Update payment status and subscription ID in a single update to avoid validation issues
       await payment.update(
         {
+          subscriptionId: subscriptionIdToSet,
           paymentStatus: PaymentStatus.COMPLETED,
           processedAt: new Date(),
+          processorId: adminUserId,
           mpesaReceiptNumber: mpesaReceiptNumber,
           callbackReceived: true, // Mark as if callback was received
+          callbackReceivedAt: new Date(),
         },
         { transaction }
       );
 
       // Create payment coverage records for premium payments
-      if (payment.subscriptionId) {
+      if (subscriptionIdToSet) {
         await PaymentCoverage.createCoverageRange(
           payment.userId,
-          payment.subscriptionId,
+          subscriptionIdToSet,
           payment.coverageStartDate,
           payment.coverageEndDate,
           payment.id,
@@ -1465,8 +1636,8 @@ export class PaymentService {
               mpesaReceiptNumber,
               amount: payment.amount,
               paymentType: payment.paymentType,
-              subscriptionCreated:
-                !payment.subscriptionId && subscription !== null,
+              subscriptionCreated: subscription !== null,
+              subscriptionId: subscriptionIdToSet,
               transactionReference: payment.transactionReference,
             },
           },
@@ -1490,8 +1661,8 @@ export class PaymentService {
         receiptNumber: mpesaReceiptNumber,
         amount: payment.amount,
         paymentType: payment.paymentType,
-        subscriptionCreated: !payment.subscriptionId && subscription !== null,
-        subscriptionId: subscription?.id || payment.subscriptionId,
+        subscriptionCreated: subscription !== null,
+        subscriptionId: subscriptionIdToSet,
       });
     } catch (error: any) {
       await transaction.rollback();

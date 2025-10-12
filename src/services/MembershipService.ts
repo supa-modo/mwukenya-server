@@ -254,6 +254,8 @@ export class MembershipService {
           mpesaReceiptNumber,
           mpesaTransactionId,
           processedAt: new Date(),
+          callbackReceived: true,
+          callbackReceivedAt: new Date(),
         },
         { transaction }
       );
@@ -564,8 +566,10 @@ export class MembershipService {
         {
           paymentStatus: PaymentStatus.COMPLETED,
           processedAt: new Date(),
+          processorId: adminUserId,
           mpesaReceiptNumber: mpesaReceiptNumber,
           callbackReceived: true, // Mark as if callback was received
+          callbackReceivedAt: new Date(),
         },
         { transaction }
       );

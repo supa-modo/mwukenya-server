@@ -27,6 +27,7 @@ class Document
   public url?: string;
   public status!: DocumentStatus;
   public uploadedAt!: Date;
+  public uploadedBy?: string;
   public verifiedAt?: Date;
   public verifiedBy?: string;
   public rejectionReason?: string;
@@ -204,6 +205,15 @@ Document.init(
       allowNull: false,
       defaultValue: DataTypes.NOW,
       field: "uploaded_at",
+    },
+    uploadedBy: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: "uploaded_by",
+      references: {
+        model: "users",
+        key: "id",
+      },
     },
     verifiedAt: {
       type: DataTypes.DATE,

@@ -592,6 +592,7 @@ export interface DocumentAttributes {
   url?: string;
   status: DocumentStatus;
   uploadedAt: Date;
+  uploadedBy?: string; // Track which admin uploaded this document
   verifiedAt?: Date;
   verifiedBy?: string;
   rejectionReason?: string;

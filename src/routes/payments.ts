@@ -45,6 +45,13 @@ router.get(
   PaymentController.getPaymentCoverage
 );
 
+// Get subscription payment summary with arrears - requires authentication
+router.get(
+  "/subscription/:subscriptionId/summary",
+  authenticate,
+  PaymentController.getSubscriptionPaymentSummary
+);
+
 // Manual payment verification - requires authentication
 router.post(
   "/verify",

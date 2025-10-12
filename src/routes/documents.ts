@@ -100,4 +100,16 @@ router.get(
   DocumentController.serveDocument
 );
 
+/**
+ * @route POST /api/documents/admin/upload-for-user/:userId
+ * @desc Upload a document on behalf of a user (admin only)
+ * @access Admin only
+ */
+router.post(
+  "/admin/upload-for-user/:userId",
+  authorize([UserRole.ADMIN, UserRole.SUPERADMIN]),
+  upload.single("file"),
+  DocumentController.uploadDocumentForUser
+);
+
 export default router;
