@@ -1183,6 +1183,459 @@ export class UserController {
   }
 
   /**
+   * Get members payment status for today (for delegates)
+   */
+  public static async getMembersPaymentStatus(
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> {
+    try {
+      const delegateId = req.user?.id;
+      const { page = 1, limit = 20, status = "all" } = req.query;
+
+      if (!delegateId) {
+        throw new ApiError("User not authenticated", "AUTH_001", 401);
+      }
+
+      // Import models dynamically to avoid circular dependencies
+      const { MemberSubscription, Payment, MedicalScheme } = await import(
+        "../models"
+      );
+
+      // Get all members under this delegate
+      const members = await User.findAll({
+        where: {
+          delegateId,
+          role: UserRole.MEMBER,
+          isActive: true,
+        },
+        attributes: [
+          "id",
+          "firstName",
+          "lastName",
+          "phoneNumber",
+          "membershipNumber",
+          "membershipStatus",
+        ],
+        order: [["firstName", "ASC"]],
+      });
+
+      // Get today's date range
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      // Get payment status for each member
+      const membersWithStatus = await Promise.all(
+        members.map(async (member) => {
+          // Get active subscription
+          const subscription = await MemberSubscription.findOne({
+            where: {
+              userId: member.id,
+              status: "active",
+            },
+            include: [
+              {
+                model: MedicalScheme,
+                as: "scheme",
+                attributes: ["id", "name", "dailyPremium", "coverageType"],
+              },
+            ],
+          });
+
+          if (!subscription) {
+            return {
+              id: member.id,
+              firstName: member.firstName,
+              lastName: member.lastName,
+              phoneNumber: member.phoneNumber,
+              membershipNumber: member.membershipNumber,
+              membershipStatus: member.membershipStatus,
+              hasSubscription: false,
+              paymentStatus: "no_subscription",
+              scheme: null,
+              dailyPremium: 0,
+              overdueAmount: 0,
+              overdueDays: 0,
+              lastPaymentDate: null,
+            };
+          }
+
+          // Get payment summary
+          const paymentSummary = await subscription.getPaymentSummary();
+
+          // Check if paid for today
+          const todayPayment = await Payment.findOne({
+            where: {
+              userId: member.id,
+              subscriptionId: subscription.id,
+              paymentStatus: "completed",
+              coverageStartDate: {
+                [Op.lte]: today,
+              },
+              coverageEndDate: {
+                [Op.gte]: today,
+              },
+            },
+            order: [["paymentDate", "DESC"]],
+          });
+
+          // Determine payment status
+          let paymentStatus = "not_paid";
+          if (todayPayment) {
+            paymentStatus = "paid";
+          } else if (paymentSummary.arrearsDays > 0) {
+            paymentStatus = "overdue";
+          }
+
+          return {
+            id: member.id,
+            firstName: member.firstName,
+            lastName: member.lastName,
+            phoneNumber: member.phoneNumber,
+            membershipNumber: member.membershipNumber,
+            membershipStatus: member.membershipStatus,
+            hasSubscription: true,
+            paymentStatus,
+            scheme: subscription.scheme
+              ? {
+                  id: subscription.scheme.id,
+                  name: subscription.scheme.name,
+                  dailyPremium: subscription.scheme.dailyPremium,
+                  coverageType: subscription.scheme.coverageType,
+                }
+              : null,
+            dailyPremium: subscription.scheme?.dailyPremium || 0,
+            overdueAmount: paymentSummary.arrearsAmount,
+            overdueDays: paymentSummary.arrearsDays,
+            lastPaymentDate: paymentSummary.lastPaymentDate,
+            totalDaysPaid: paymentSummary.totalDaysPaid,
+            nextDueDate: paymentSummary.nextDueDate,
+          };
+        })
+      );
+
+      // Filter based on status query param
+      let filteredMembers = membersWithStatus;
+      if (status !== "all") {
+        filteredMembers = membersWithStatus.filter(
+          (m) => m.paymentStatus === status
+        );
+      }
+
+      // Calculate statistics
+      const stats = {
+        total: membersWithStatus.length,
+        paid: membersWithStatus.filter((m) => m.paymentStatus === "paid")
+          .length,
+        notPaid: membersWithStatus.filter((m) => m.paymentStatus === "not_paid")
+          .length,
+        overdue: membersWithStatus.filter((m) => m.paymentStatus === "overdue")
+          .length,
+        noSubscription: membersWithStatus.filter(
+          (m) => m.paymentStatus === "no_subscription"
+        ).length,
+      };
+
+      // Pagination
+      const offset = (Number(page) - 1) * Number(limit);
+      const paginatedMembers = filteredMembers.slice(
+        offset,
+        offset + Number(limit)
+      );
+
+      res.status(200).json({
+        success: true,
+        data: {
+          members: paginatedMembers,
+          statistics: stats,
+          pagination: {
+            total: filteredMembers.length,
+            page: Number(page),
+            limit: Number(limit),
+            pages: Math.ceil(filteredMembers.length / Number(limit)),
+          },
+        },
+        message: "Members payment status retrieved successfully",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      logger.error("Error getting members payment status:", error);
+
+      if (error instanceof ApiError) {
+        res.status(error.statusCode).json({
+          success: false,
+          error: {
+            code: error.code,
+            message: error.message,
+          },
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        error: {
+          code: "SYS_001",
+          message: "Internal server error",
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  /**
+   * Get all members payment status (for admin)
+   */
+  public static async getAllMembersPaymentStatus(
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> {
+    try {
+      const { page = 1, limit = 20, status = "all", search = "" } = req.query;
+
+      // Import models dynamically to avoid circular dependencies
+      const { MemberSubscription, Payment, MedicalScheme } = await import(
+        "../models"
+      );
+
+      // Build search conditions
+      const whereConditions: any = {
+        role: UserRole.MEMBER,
+        isActive: true,
+      };
+
+      if (search) {
+        whereConditions[Op.or] = [
+          { firstName: { [Op.iLike]: `%${search}%` } },
+          { lastName: { [Op.iLike]: `%${search}%` } },
+          { membershipNumber: { [Op.iLike]: `%${search}%` } },
+        ];
+      }
+
+      // Get all active members
+      const members = await User.findAll({
+        where: whereConditions,
+        attributes: [
+          "id",
+          "firstName",
+          "lastName",
+          "phoneNumber",
+          "membershipNumber",
+          "membershipStatus",
+          "delegateId",
+        ],
+        include: [
+          {
+            model: User,
+            as: "delegate",
+            attributes: ["id", "firstName", "lastName", "delegateCode"],
+          },
+        ],
+        order: [["firstName", "ASC"]],
+      });
+
+      // Get today's date range
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      // Get payment status for each member
+      const membersWithStatus = await Promise.all(
+        members.map(async (member) => {
+          // Get active subscription
+          const subscription = await MemberSubscription.findOne({
+            where: {
+              userId: member.id,
+              status: "active",
+            },
+            include: [
+              {
+                model: MedicalScheme,
+                as: "scheme",
+                attributes: ["id", "name", "dailyPremium", "coverageType"],
+              },
+            ],
+          });
+
+          if (!subscription) {
+            const memberData = member.toJSON() as any;
+            return {
+              id: member.id,
+              firstName: member.firstName,
+              lastName: member.lastName,
+              phoneNumber: member.phoneNumber,
+              membershipNumber: member.membershipNumber,
+              membershipStatus: member.membershipStatus,
+              delegate: memberData.delegate
+                ? {
+                    id: memberData.delegate.id,
+                    firstName: memberData.delegate.firstName,
+                    lastName: memberData.delegate.lastName,
+                    delegateCode: memberData.delegate.delegateCode,
+                  }
+                : null,
+              hasSubscription: false,
+              paymentStatus: "no_subscription",
+              scheme: null,
+              dailyPremium: 0,
+              overdueAmount: 0,
+              overdueDays: 0,
+              advanceDaysPaid: 0,
+              lastPaymentDate: null,
+              nextDueDate: null,
+              totalDaysPaid: 0,
+              coverageEndDate: null,
+            };
+          }
+
+          // Get payment summary
+          const paymentSummary = await subscription.getPaymentSummary();
+
+          // Check if paid for today
+          const todayPayment = await Payment.findOne({
+            where: {
+              userId: member.id,
+              subscriptionId: subscription.id,
+              paymentStatus: "completed",
+              coverageStartDate: {
+                [Op.lte]: today,
+              },
+              coverageEndDate: {
+                [Op.gte]: today,
+              },
+            },
+            order: [["paymentDate", "DESC"]],
+          });
+
+          // Determine payment status
+          let paymentStatus = "not_paid";
+          if (todayPayment) {
+            paymentStatus = "paid";
+          } else if (paymentSummary.arrearsDays > 0) {
+            paymentStatus = "overdue";
+          }
+
+          const memberData = member.toJSON() as any;
+          return {
+            id: member.id,
+            firstName: member.firstName,
+            lastName: member.lastName,
+            phoneNumber: member.phoneNumber,
+            membershipNumber: member.membershipNumber,
+            membershipStatus: member.membershipStatus,
+            delegate: memberData.delegate
+              ? {
+                  id: memberData.delegate.id,
+                  firstName: memberData.delegate.firstName,
+                  lastName: memberData.delegate.lastName,
+                  delegateCode: memberData.delegate.delegateCode,
+                }
+              : null,
+            hasSubscription: true,
+            paymentStatus,
+            scheme: subscription.scheme
+              ? {
+                  id: subscription.scheme.id,
+                  name: subscription.scheme.name,
+                  dailyPremium: subscription.scheme.dailyPremium,
+                  coverageType: subscription.scheme.coverageType,
+                }
+              : null,
+            dailyPremium: subscription.scheme?.dailyPremium || 0,
+            overdueAmount: paymentSummary.arrearsAmount,
+            overdueDays: paymentSummary.arrearsDays,
+            advanceDaysPaid: paymentSummary.advanceDaysPaid,
+            lastPaymentDate: paymentSummary.lastPaymentDate,
+            nextDueDate: paymentSummary.nextDueDate,
+            totalDaysPaid: paymentSummary.totalDaysPaid,
+            coverageEndDate: paymentSummary.coverageEndDate,
+          };
+        })
+      );
+
+      // Filter based on status query param
+      let filteredMembers = membersWithStatus;
+      if (status !== "all") {
+        filteredMembers = membersWithStatus.filter(
+          (m) => m.paymentStatus === status
+        );
+      }
+
+      // Calculate statistics
+      const stats = {
+        total: membersWithStatus.length,
+        paid: membersWithStatus.filter((m) => m.paymentStatus === "paid")
+          .length,
+        notPaid: membersWithStatus.filter((m) => m.paymentStatus === "not_paid")
+          .length,
+        overdue: membersWithStatus.filter((m) => m.paymentStatus === "overdue")
+          .length,
+        noSubscription: membersWithStatus.filter(
+          (m) => m.paymentStatus === "no_subscription"
+        ).length,
+        totalAdvanceDays: membersWithStatus.reduce(
+          (sum, m) => sum + (m.advanceDaysPaid || 0),
+          0
+        ),
+        totalOverdueAmount: membersWithStatus.reduce(
+          (sum, m) => sum + (m.overdueAmount || 0),
+          0
+        ),
+      };
+
+      // Pagination
+      const offset = (Number(page) - 1) * Number(limit);
+      const paginatedMembers = filteredMembers.slice(
+        offset,
+        offset + Number(limit)
+      );
+
+      res.status(200).json({
+        success: true,
+        data: {
+          members: paginatedMembers,
+          statistics: stats,
+          pagination: {
+            total: filteredMembers.length,
+            page: Number(page),
+            limit: Number(limit),
+            pages: Math.ceil(filteredMembers.length / Number(limit)),
+          },
+        },
+        message: "All members payment status retrieved successfully",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      logger.error("Error getting all members payment status:", error);
+
+      if (error instanceof ApiError) {
+        res.status(error.statusCode).json({
+          success: false,
+          error: {
+            code: error.code,
+            message: error.message,
+          },
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        error: {
+          code: "SYS_001",
+          message: "Internal server error",
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  /**
    * Get coordinator statistics for dashboard
    */
   public static async getCoordinatorStats(

@@ -199,10 +199,12 @@ class Payment
         ? "delegateCommission"
         : "coordinatorCommission";
 
+    // IMPORTANT: Only include premium payments - membership payments don't generate commissions
     const result = await this.findAll({
       where: {
         [field]: recipientId,
         paymentStatus: PaymentStatus.COMPLETED,
+        paymentType: PaymentType.PREMIUM, // Only count premium payments
         paymentDate: {
           [Op.between]: [startDate, endDate],
         },

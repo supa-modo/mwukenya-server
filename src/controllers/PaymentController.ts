@@ -253,8 +253,10 @@ export class PaymentController {
 
       res.status(200).json({
         success: true,
-        data: result.payments,
-        pagination: result.pagination,
+        data: {
+          payments: result.payments,
+          pagination: result.pagination,
+        },
         message: "Payment history retrieved successfully",
         timestamp: new Date().toISOString(),
       });
@@ -1135,8 +1137,10 @@ export class PaymentController {
 
       res.status(200).json({
         success: true,
-        data: result.payments,
-        pagination: result.pagination,
+        data: {
+          payments: result.payments,
+          pagination: result.pagination,
+        },
         message: "Membership payment history retrieved successfully",
         timestamp: new Date().toISOString(),
       });

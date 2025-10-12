@@ -103,11 +103,13 @@ class DailySettlement extends Model<
     const startDate = startOfDay(settlementDate);
     const endDate = endOfDay(settlementDate);
 
-    // Get all completed payments for the settlement date
+    // Get all completed PREMIUM payments for the settlement date
+    // IMPORTANT: Exclude membership payments - only premium payments generate commissions
     const payments = await Payment.findAll({
       where: {
         paymentStatus: "completed",
         settlementDate: startOfDay(settlementDate),
+        paymentType: "premium", // Only include premium payments, exclude membership payments
       },
       include: [
         {

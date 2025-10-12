@@ -4,6 +4,20 @@
 
 This document describes the comprehensive settlement payment processing system that provides granular control over different types of payments within a settlement.
 
+**⚠️ IMPORTANT: Settlements ONLY include PREMIUM payments**
+
+The daily settlement system automatically filters out membership registration payments and only processes:
+
+- Medical scheme premium payments (`paymentType: "premium"`)
+- Payments that generate commissions for delegates and coordinators
+- Payments with SHA portions that need to be transferred
+
+**Membership registration fees are excluded** from settlement processing as they:
+
+- Do not generate commissions
+- Have no SHA portion to transfer
+- Go entirely to MWU operational funds
+
 ## Architecture
 
 ### Components

@@ -106,6 +106,17 @@ router.get(
 );
 
 /**
+ * @route GET /api/users/members-payment-status
+ * @desc Get members with today's payment status (for delegate)
+ * @access Delegate only
+ */
+router.get(
+  "/members-payment-status",
+  authorize([UserRole.DELEGATE]),
+  UserController.getMembersPaymentStatus
+);
+
+/**
  * @route GET /api/users/coordinator-stats
  * @desc Get coordinator statistics (for coordinator dashboard)
  * @access Coordinator only
@@ -114,6 +125,17 @@ router.get(
   "/coordinator-stats",
   authorize([UserRole.COORDINATOR]),
   UserController.getCoordinatorStats
+);
+
+/**
+ * @route GET /api/users/admin/members-payment-status
+ * @desc Get all members with payment status (for admin)
+ * @access Admin only
+ */
+router.get(
+  "/admin/members-payment-status",
+  authorize([UserRole.ADMIN, UserRole.SUPERADMIN]),
+  UserController.getAllMembersPaymentStatus
 );
 
 export default router;

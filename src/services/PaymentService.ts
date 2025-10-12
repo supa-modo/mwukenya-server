@@ -712,6 +712,42 @@ export class PaymentService {
 
       const { count, rows } = await Payment.findAndCountAll({
         where: { userId },
+        attributes: [
+          "id",
+          "userId",
+          "subscriptionId",
+          "amount",
+          "paymentDate",
+          "settlementDate",
+          "paymentMethod",
+          "transactionReference",
+          "paymentStatus",
+          "paymentType",
+          "daysCovered",
+          "coverageStartDate",
+          "coverageEndDate",
+          "delegateCommission",
+          "coordinatorCommission",
+          "shaPortion",
+          "commissionDelegateId",
+          "commissionCoordinatorId",
+          "processedAt",
+          "processorId",
+          "mpesaReceiptNumber",
+          "mpesaTransactionId",
+          "mpesaCheckoutRequestId",
+          "mpesaResultCode",
+          "mpesaResultDescription",
+          "mpesaPhoneNumber",
+          "mpesaAccountReference",
+          "mpesaTransactionDescription",
+          "callbackReceived",
+          "callbackReceivedAt",
+          "mwuPortion",
+          "totalCommissions",
+          "createdAt",
+          "updatedAt",
+        ],
         include: [
           {
             model: MemberSubscription,
@@ -1067,6 +1103,42 @@ export class PaymentService {
     const { rows: payments, count: totalItems } = await Payment.findAndCountAll(
       {
         where: whereClause,
+        attributes: [
+          "id",
+          "userId",
+          "subscriptionId",
+          "amount",
+          "paymentDate",
+          "settlementDate",
+          "paymentMethod",
+          "transactionReference",
+          "paymentStatus",
+          "paymentType",
+          "daysCovered",
+          "coverageStartDate",
+          "coverageEndDate",
+          "delegateCommission",
+          "coordinatorCommission",
+          "shaPortion",
+          "commissionDelegateId",
+          "commissionCoordinatorId",
+          "processedAt",
+          "processorId",
+          "mpesaReceiptNumber",
+          "mpesaTransactionId",
+          "mpesaCheckoutRequestId",
+          "mpesaResultCode",
+          "mpesaResultDescription",
+          "mpesaPhoneNumber",
+          "mpesaAccountReference",
+          "mpesaTransactionDescription",
+          "callbackReceived",
+          "callbackReceivedAt",
+          "mwuPortion",
+          "totalCommissions",
+          "createdAt",
+          "updatedAt",
+        ],
         include: [
           {
             model: User,
@@ -1217,6 +1289,7 @@ export class PaymentService {
       attributes: [
         "amount",
         "paymentStatus",
+        "paymentType",
         "delegateCommission",
         "coordinatorCommission",
         "shaPortion",
@@ -1254,16 +1327,19 @@ export class PaymentService {
       0
     );
 
-    // Calculate commission statistics
-    const totalCommissions = completedPayments.reduce(
+    // Calculate commission statistics (only for premium payments - membership payments have no commissions)
+    const premiumPayments = completedPayments.filter(
+      (p) => p.paymentType === PaymentType.PREMIUM
+    );
+    const totalCommissions = premiumPayments.reduce(
       (sum, p) => sum + parseFloat(p.totalCommissions?.toString() || "0"),
       0
     );
-    const shaAmount = completedPayments.reduce(
+    const shaAmount = premiumPayments.reduce(
       (sum, p) => sum + parseFloat(p.shaPortion?.toString() || "0"),
       0
     );
-    const mwuAmount = completedPayments.reduce(
+    const mwuAmount = premiumPayments.reduce(
       (sum, p) => sum + parseFloat(p.mwuPortion?.toString() || "0"),
       0
     );
